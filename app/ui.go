@@ -5,18 +5,15 @@ import (
 	"fmt"
 
 	"github.com/awesome-gocui/gocui"
+	. "github.com/sleepy-day/sqline/shared"
 )
 
 var connViews []string = []string{
-	"driver_label",
-	"name_input",
-	"connect_input",
-	"test_button",
-	"save_button",
-}
-
-func scale(factor float32, value int) int {
-	return int(factor * float32(value))
+	"driver_select",
+	"new_conn_name",
+	"conn_str_input",
+	"test_conn_button",
+	"save_conn_button",
 }
 
 func delAddView(g *gocui.Gui) {
@@ -29,7 +26,7 @@ func delAddView(g *gocui.Gui) {
 
 func layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
-	s := scale
+	s := Scale
 
 	_, err := g.SetView("no_selection", -2, -2, -1, -1, 0)
 	if err != nil && !errors.Is(err, gocui.ErrUnknownView) {

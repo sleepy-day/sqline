@@ -16,64 +16,78 @@ type Option struct {
 }
 
 type RadioSelect struct {
-	name     string
-	label    string
-	x, y, w  int
-	selected string
-	options  []Option
-	buttons  []Button
+	name                     string
+	label                    string
+	x, y, w                  int
+	left, top, right, bottom int
+	selected                 string
+	options                  []Option
+	buttons                  []Button
 }
 
-func NewRadioSelect(name, label string, x, y int, options map[string]string) *RadioSelect {
+func NewRadioSelect(g *gocui.Gui, name, label string, x, y int, options []Option) *RadioSelect {
 	Assert(name != "", "NewRadioSelect(): name empty")
 	Assert(label != "", "NewRadioSelect(): name empty")
 	Assert(len(options) > 0, "NewRadioSelect(): options length is 0")
 	Assert(len(options) <= 9, "NewRadioSelect(): options length greater than 9")
-
-	opts := []Option{}
-	for k, v := range options {
-		opts = append(opts, Option{Label: k, Value: v})
-	}
 
 	return &RadioSelect{
 		name:    name,
 		label:   label,
 		x:       x,
 		y:       y,
-		w:       len(label) + 1,
-		options: opts,
+		w:       x + len(label) + Offset,
+		options: options,
 	}
 }
 
 func (rs *RadioSelect) Layout(g *gocui.Gui) (*gocui.View, error) {
-	view, err := g.SetView(rs.label, rs.x, rs.y, rs.x+rs.w, rs.y+2, 0)
+	view, err := g.SetView(rs.name, rs.x, rs.y, rs.w, rs.y+MinHeight, 0)
 	if err != nil && !errors.Is(err, gocui.ErrUnknownView) {
-		return nil, err
+		panic("error setting up Radio Select view")
 	}
 	view.Frame = false
 	fmt.Fprint(view, rs.label)
 
 	_, labelY := view.Size()
-	y := rs.y + labelY + 1
-	x := rs.x + 1
+	btnY := rs.y + labelY + Offset
+	btnX := rs.x + Offset
 
+	rs.left, rs.top, rs.right, rs.bottom = view.Dimensions()
 	for i, v := range rs.options {
 		Assert(i < 10, "RadioSelect.Layout(): more than 9 options present")
 
-		btn := NewButton(v.Name, v.Label, v.Value, x+1, y, 0, nil)
+		btn := NewButton(v.Name, v.Label, v.Value, btnX, btnY, 0, nil)
+		rs.buttons = append(rs.buttons, *btn)
+
 		btnView, err := btn.Layout(g)
 		if err != nil {
-			return nil, err
+			panic("error setting up button for radio select view")
 		}
 
-		ch := []rune(strconv.Itoa(i))[0]
+		ch := []rune(strconv.Itoa(i + 1))[0]
 
 		err = g.SetKeybinding(rs.name, ch, gocui.ModNone, makeRadioSelection(btnView, rs, btn.value))
 		if err != nil {
-			return nil, err
+			panic("error setting up keybinding for radio select button")
 		}
 
-		x += len(btn.label) + 1
+		btnX += len(btn.label) + BtnGap
+
+		left, top, right, bottom := btnView.Dimensions()
+
+		if rs.left > left {
+			rs.left = left
+		}
+		if rs.top > top {
+			rs.top = top
+		}
+		if rs.right < right {
+			rs.right = right
+		}
+		if rs.bottom < bottom {
+			rs.bottom = bottom
+		}
 	}
 
 	return view, nil
@@ -84,7 +98,42 @@ func (rs *RadioSelect) CleanUp(g *gocui.Gui) {
 		g.DeleteView(v.name)
 	}
 
+	rs.deleteRadioBindings(g)
 	g.DeleteView(rs.name)
+}
+
+func (rs *RadioSelect) Dimensions() (left, top, right, bottom int) {
+	return rs.left, rs.top, rs.right, rs.bottom
+}
+
+func (rs *RadioSelect) Size() (x, y int) {
+	return rs.right - rs.left, rs.bottom - rs.top
+}
+
+func (rs *RadioSelect) Selected() string {
+	return rs.selected
+}
+
+func (rs *RadioSelect) Resize(x, y, w int) {
+	if w == 0 {
+		w = x + len(rs.label) + Offset
+	}
+	rs.x, rs.y, rs.w = x, y, w
+}
+
+func (rs *RadioSelect) HasLabel() bool {
+	return true
+}
+
+func (rs *RadioSelect) deleteRadioBindings(g *gocui.Gui) {
+	for i := range 10 {
+		ch := []rune(strconv.Itoa(i + 1))[0]
+		g.DeleteKeybinding(rs.name, ch, gocui.ModNone)
+	}
+}
+
+func (rs *RadioSelect) Name() string {
+	return rs.name
 }
 
 func makeRadioSelection(view *gocui.View, rs *RadioSelect, selected string) KeybindFunc {

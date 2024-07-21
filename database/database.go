@@ -1,6 +1,14 @@
 package database
 
-import "github.com/jmoiron/sqlx"
+import (
+	"errors"
+
+	"github.com/jmoiron/sqlx"
+)
+
+var (
+	ErrNotSupported = errors.New("not supported on target database")
+)
 
 type Database interface {
 	Info() (string, string)

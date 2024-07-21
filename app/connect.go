@@ -1,13 +1,13 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/awesome-gocui/gocui"
-	"github.com/gdamore/tcell/v2/termbox"
+	"github.com/sleepy-day/sqline/app/widgets"
 	"github.com/sleepy-day/sqline/database"
+	. "github.com/sleepy-day/sqline/shared"
 )
 
 type dbButton struct {
@@ -16,329 +16,280 @@ type dbButton struct {
 	ViewName string
 }
 
-func assert(cond bool, msg string) {
-	if !cond {
-		panic(msg)
-	}
+type NewConnPage struct {
+	Height, Width   int
+	SelectableViews []string
+	Modal           *widgets.Modal
+	Driver          *widgets.RadioSelect
+	Name            *widgets.Input
+	ConnStr         *widgets.Input
+	TestConn        *widgets.Button
+	SaveConn        *widgets.Button
+	Info            *widgets.Info
 }
 
-func dbButtons() []dbButton {
-	return []dbButton{
-		{Label: "Postgres", Value: "postgres", ViewName: "psql_button"},
-		{Label: "Sqlite", Value: "sqlite3", ViewName: "sqlite_button"},
+// TODO: move init into New functions
+
+func CreateNewConnPage(g *gocui.Gui, width, height int) *NewConnPage {
+	page := &NewConnPage{
+		Height: height,
+		Width:  width,
 	}
+
+	guiX, guiY := g.Size()
+
+	left := Scale(0.5, guiX-width)
+	right := left + width
+	top := Scale(0.5, guiY-height)
+	bottom := top + height
+
+	page.Modal = widgets.NewModal("new_conn", "", left, top, right, bottom)
+
+	page.Modal.Layout(g)
+	defer page.Modal.CleanUp(g)
+
+	modX, modY := page.Modal.Size()
+
+	left += Scale(0.05, modX)
+	top += Scale(0.05, modY)
+	page.Driver = widgets.NewRadioSelect(g, "driver_select", "Select a driver:", left, top, driverOpts())
+
+	page.Driver.Layout(g)
+	defer page.Driver.CleanUp(g)
+
+	page.SelectableViews = append(page.SelectableViews, "driver_select")
+
+	_, prevY := page.Driver.Size()
+
+	top += prevY
+	w := Scale(0.8, width)
+	page.Name = widgets.NewInput("new_conn_name", "Name:", left, top, w, nil, nil)
+
+	page.Name.Layout(g)
+	defer page.Name.CleanUp(g)
+
+	page.SelectableViews = append(page.SelectableViews, "new_conn_name")
+
+	_, prevY = page.Name.Size()
+
+	top += prevY
+	page.ConnStr = widgets.NewInput("conn_str_input", "Connection String:", left, top, w, nil, nil)
+
+	page.ConnStr.Layout(g)
+	defer page.ConnStr.CleanUp(g)
+
+	page.SelectableViews = append(page.SelectableViews, "conn_str_input")
+
+	_, prevY = page.ConnStr.Size()
+
+	top += prevY
+	left += Scale(0.25, width)
+	page.TestConn = widgets.NewButton("test_conn_button", "Test Connection", "test", left, top, 0, page.testConnection())
+
+	page.TestConn.Layout(g)
+	defer page.TestConn.CleanUp(g)
+
+	page.SelectableViews = append(page.SelectableViews, "test_conn_button")
+
+	prevX, _ := page.TestConn.Size()
+	left += prevX + 2
+	page.SaveConn = widgets.NewButton("save_conn_button", "Save", "save", left, top, 0, page.saveConnection())
+
+	page.SaveConn.Layout(g)
+	defer page.SaveConn.CleanUp(g)
+
+	page.SelectableViews = append(page.SelectableViews, "save_conn_button")
+
+	_, prevY = page.SaveConn.Size()
+
+	top += prevY + 1
+	left -= Scale(0.40, modX)
+	right = Scale(0.60, modX)
+	page.Info = widgets.NewInfo("info_box", left, top, right)
+
+	g.SetKeybinding("", gocui.KeyTab, gocui.ModNone, SwapSelection)
+
+	return page
 }
 
-func connInput(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
-	switch {
-	case ch != 0 && mod == 0:
-		v.EditWrite(ch)
-	case key == gocui.KeySpace:
-		v.EditWrite(' ')
-	case key == gocui.KeyBackspace || key == gocui.KeyBackspace2:
-		v.EditDelete(true)
-	case key == gocui.KeyDelete:
-		v.EditDelete(false)
-	case key == gocui.KeyInsert:
-		v.Overwrite = !v.Overwrite
+func (page *NewConnPage) Open(g *gocui.Gui) error {
+	_, err := page.Modal.Layout(g)
+	if err != nil {
+		return err
 	}
+
+	driver, err := page.Driver.Layout(g)
+	if err != nil {
+		return err
+	}
+
+	_, err = page.Name.Layout(g)
+	if err != nil {
+		return err
+	}
+
+	_, err = page.ConnStr.Layout(g)
+	if err != nil {
+		return err
+	}
+
+	_, err = page.TestConn.Layout(g)
+	if err != nil {
+		return err
+	}
+
+	_, err = page.SaveConn.Layout(g)
+	if err != nil {
+		return err
+	}
+
+	_, err = page.Info.Layout(g)
+	if err != nil {
+		return err
+	}
+
+	g.SetCurrentView(driver.Name())
+
+	return nil
 }
 
-func connSwitchSelection(g *gocui.Gui, _ *gocui.View) error {
-	if s_mode != m_connect {
-		return nil
-	}
+func (page *NewConnPage) Close(g *gocui.Gui) {
+	page.Modal.CleanUp(g)
+	page.Driver.CleanUp(g)
+	page.Name.CleanUp(g)
+	page.ConnStr.CleanUp(g)
+	page.TestConn.CleanUp(g)
+	page.SaveConn.CleanUp(g)
+	page.Info.CleanUp(g)
+}
 
+func (page *NewConnPage) SwapSelection(g *gocui.Gui) {
 	view := g.CurrentView()
 	index := -1
-	for i, v := range connViews {
+	for i, v := range page.SelectableViews {
 		if view.Name() == v {
 			index = i
 			break
 		}
 	}
 
-	if index < 0 {
-		panic("Invalid view switch on connection view.")
-	}
+	Assert(index >= 0, "SwapSelection(): next view was not found")
 
 	index++
-	if index == len(connViews) {
-		g.SetCurrentView(connViews[0])
+	if index == len(page.SelectableViews) {
+		index = 0
+	}
+
+	g.SetCurrentView(page.SelectableViews[index])
+	return
+}
+
+func SwapSelection(g *gocui.Gui, _ *gocui.View) error {
+	if s_mode != m_connect {
 		return nil
 	}
 
-	g.SetCurrentView(connViews[index])
+	NewConn.SwapSelection(g)
+
 	return nil
 }
 
-func unknownView(err error) bool {
-	return !errors.Is(err, gocui.ErrUnknownView)
+func driverOpts() []widgets.Option {
+	return []widgets.Option{
+		{Name: "psql_select", Label: "Postgres", Value: "postgres"},
+		{Name: "sqlite_select", Label: "Sqlite", Value: "sqlite3"},
+		{Name: "mysql_select", Label: "MySql", Value: "mysql"},
+	}
 }
 
-func openAddView(g *gocui.Gui, _ *gocui.View) error {
-	if s_mode != m_normal {
-		return nil
-	}
-
-	s_mode = m_connect
-
-	maxX, maxY := g.Size()
-	x, y := scale(0.2, maxX), scale(0.25, maxY)
-	x2, y2 := scale(0.8, maxX), scale(0.75, maxY)
-	if _, err := g.SetView("add_database", x, y, x2, y2, 0); err != nil {
-		if !errors.Is(err, gocui.ErrUnknownView) {
+func (page *NewConnPage) testConnection() widgets.KeybindFunc {
+	return func(g *gocui.Gui, _ *gocui.View) error {
+		status, err := g.View(page.Info.Name())
+		if err != nil {
 			return err
 		}
-	}
+		status.Clear()
 
-	x, y = scale(0.21, maxX), scale(0.30, maxY)
-	x2, y2 = scale(0.50, maxX), scale(0.30, maxY)+2
-	if v, err := g.SetView("driver_label", x, y, x2, y2, 0); err != nil {
-		if unknownView(err) {
-			return err
-		}
-
-		v.Frame = false
-		fmt.Fprintf(v, "Database Driver:")
-	}
-
-	x, y = scale(0.22, maxX), scale(0.35, maxY)
-	x2, y2 = scale(0.30, maxX), scale(0.35, maxY)+2
-	for _, v := range dbButtons() {
-		view, err := g.SetView(v.ViewName, x, y, x2, y2, 0)
-		if err != nil && unknownView(err) {
-			return err
-		}
-
-		view.SelBgColor = gocui.Attribute(termbox.ColorWhite)
-		view.SelFgColor = gocui.Attribute(termbox.ColorBlack)
-		fmt.Fprintf(view, spaceText(v.Label, x2-x))
-
-		x = x2 + 1
-		x2 += scale(0.08, maxX) + 1
-	}
-
-	if err := g.SetKeybinding("driver_label", '1', gocui.ModNone, psqlSelect); err != nil {
-		return err
-	}
-
-	if err := g.SetKeybinding("driver_label", '2', gocui.ModNone, sqliteSelect); err != nil {
-		return err
-	}
-
-	x, y = scale(0.21, maxX), scale(0.40, maxY)
-	x2, y2 = scale(0.50, maxX), scale(0.40, maxY)+2
-	if v, err := g.SetView("name_label", x, y, x2, y2, 0); err != nil {
-		if unknownView(err) {
-			return err
-		}
-
-		v.Frame = false
-		fmt.Fprintf(v, "Name:")
-	}
-
-	x, y = scale(0.22, maxX), scale(0.43, maxY)
-	x2, y2 = scale(0.58, maxX), scale(0.43, maxY)+2
-	if v, err := g.SetView("name_input", x, y, x2, y2, 0); err != nil {
-		if !errors.Is(err, gocui.ErrUnknownView) {
-			return err
-		}
-
-		v.Editable = true
-		v.Editor = gocui.EditorFunc(connInput)
-	}
-
-	x, y = scale(0.21, maxX), scale(0.48, maxY)
-	x2, y2 = scale(0.50, maxX), scale(0.48, maxY)+2
-	if v, err := g.SetView("conn_str_label", x, y, x2, y2, 0); err != nil {
-		if unknownView(err) {
-			return err
-		}
-
-		v.Frame = false
-		fmt.Fprintf(v, "Connection String:")
-	}
-
-	x, y = scale(0.22, maxX), scale(0.53, maxY)
-	x2, y2 = scale(0.58, maxX), scale(0.53, maxY)+2
-	if v, err := g.SetView("connect_input", x, y, x2, y2, 0); err != nil {
-		if !errors.Is(err, gocui.ErrUnknownView) {
-			return err
-		}
-
-		v.Editable = true
-		v.Editor = gocui.EditorFunc(connInput)
-	}
-
-	x, y = scale(0.32, maxX), scale(0.65, maxY)
-	x2, y2 = scale(0.72, maxX), scale(0.65, maxY)+2
-	if _, err := g.SetView("conn_status", x, y, x2, y2, 0); err != nil {
-		if !errors.Is(err, gocui.ErrUnknownView) {
-			return err
-		}
-	}
-
-	x, y = scale(0.25, maxX), scale(0.58, maxY)
-	x2, y2 = scale(0.33, maxX), scale(0.58, maxY)+2
-	if v, err := g.SetView("test_button", x, y, x2, y2, 0); err != nil {
-		if unknownView(err) {
-			return err
-		}
-
-		fmt.Fprintf(v, "Test")
-	}
-
-	x = x2 + 1
-	x2 += scale(0.08, maxX) + 1
-	if v, err := g.SetView("save_button", x, y, x2, y2, 0); err != nil {
-		if unknownView(err) {
-			return err
-		}
-
-		fmt.Fprint(v, "Save")
-	}
-
-	if err := g.SetKeybinding("test_button", gocui.KeyEnter, gocui.ModNone, testConnection); err != nil {
-		return err
-	}
-
-	if err := g.SetKeybinding("save_button", gocui.KeyEnter, gocui.ModNone, saveConnection); err != nil {
-		return err
-	}
-
-	if err := g.SetKeybinding("", gocui.KeyTab, gocui.ModNone, connSwitchSelection); err != nil {
-		return err
-	}
-
-	_, err := g.SetCurrentView("driver_label")
-	return err
-}
-
-func psqlSelect(g *gocui.Gui, v *gocui.View) error {
-	buttons := []string{
-		"psql_button",
-		"sqlite_button",
-	}
-
-	for _, val := range buttons {
-		view, err := g.View(val)
+		connStrInput, err := g.View(page.ConnStr.Name())
 		if err != nil {
 			return err
 		}
 
-		if val != "psql_button" {
-			view.Highlight = false
-			continue
-		}
-
-		view.Highlight = true
-	}
-
-	driver = "postgres"
-	return nil
-}
-
-func sqliteSelect(g *gocui.Gui, _ *gocui.View) error {
-	buttons := []string{
-		"psql_button",
-		"sqlite_button",
-	}
-
-	for _, val := range buttons {
-		view, err := g.View(val)
-		if err != nil {
-			return err
-		}
-
-		if val != "sqlite_button" {
-			view.Highlight = false
-			continue
-		}
-
-		view.Highlight = true
-	}
-
-	driver = "sqlite3"
-	return nil
-}
-
-func testConnection(g *gocui.Gui, _ *gocui.View) error {
-	status, err := g.View("conn_status")
-	if err != nil {
-		return err
-	}
-	status.Clear()
-
-	connStrInput, err := g.View("connect_input")
-	if err != nil {
-		return err
-	}
-
-	lines := connStrInput.BufferLines()
-	if len(lines) == 0 {
-		fmt.Fprintf(status, "Invalid input")
-		return nil
-	}
-
-	err = database.TestConnection(driver, lines[0])
-	if err != nil {
-		fmt.Fprintf(status, err.Error())
-		return nil
-	}
-
-	fmt.Fprintf(status, "Test connection successful.")
-	return nil
-}
-
-func saveConnection(g *gocui.Gui, _ *gocui.View) error {
-	status, err := g.View("conn_status")
-	if err != nil {
-		return err
-	}
-	status.Clear()
-
-	connStrInput, err := g.View("connect_input")
-	if err != nil {
-		return err
-	}
-
-	lines := connStrInput.BufferLines()
-	if len(lines) == 0 || lines[0] == "" {
-		fmt.Fprintf(status, "Invalid connection string input")
-		return nil
-	}
-
-	connStr := lines[0]
-
-	nameInput, err := g.View("name_input")
-	if err != nil {
-		return err
-	}
-
-	lines = nameInput.BufferLines()
-	if len(lines) == 0 || lines[0] == "" {
-		fmt.Fprintf(status, "Invalid name input")
-		return nil
-	}
-
-	name := lines[0]
-
-	for _, v := range savedConns.Conns {
-		if strings.Compare(v.Driver, driver) != 0 && strings.Compare(v.ConnStr, connStr) != 0 {
-			fmt.Fprintf(status, "Connection already exists as [%s]", v.Name)
+		lines := connStrInput.BufferLines()
+		if len(lines) == 0 {
+			fmt.Fprintf(status, "Invalid input")
 			return nil
 		}
+
+		driver := page.Driver.Selected()
+
+		err = database.TestConnection(driver, lines[0])
+		if err != nil {
+			fmt.Fprintf(status, err.Error())
+			return nil
+		}
+
+		fmt.Fprintf(status, "Test connection successful.")
+		return nil
 	}
-
-	savedConns.Conns = append(savedConns.Conns, ConnInfo{Name: name, Driver: driver, ConnStr: connStr})
-
-	saveConns()
-
-	return nil
 }
 
-func startConnection(g *gocui.Gui, v *gocui.View) error {
+func (page *NewConnPage) saveConnection() widgets.KeybindFunc {
+	return func(g *gocui.Gui, _ *gocui.View) error {
+		status, err := g.View(page.Info.Name())
+		if err != nil {
+			return err
+		}
+		status.Clear()
+
+		connStrInput, err := g.View(page.ConnStr.Name())
+		if err != nil {
+			return err
+		}
+
+		lines := connStrInput.BufferLines()
+		if len(lines) == 0 || lines[0] == "" {
+			fmt.Fprintf(status, "Invalid connection string input")
+			return nil
+		}
+
+		connStr := lines[0]
+
+		nameInput, err := g.View(page.Name.Name())
+		if err != nil {
+			return err
+		}
+
+		lines = nameInput.BufferLines()
+		if len(lines) == 0 || lines[0] == "" {
+			fmt.Fprintf(status, "Invalid name input")
+			return nil
+		}
+
+		name := lines[0]
+		driver := page.Driver.Selected()
+
+		for _, v := range savedConns.Conns {
+			if strings.Compare(v.Driver, driver) != 0 && strings.Compare(v.ConnStr, connStr) != 0 {
+				fmt.Fprintf(status, "Connection already exists as [%s]", v.Name)
+				return nil
+			}
+		}
+
+		savedConns.Conns = append(savedConns.Conns, ConnInfo{Name: name, Driver: driver, ConnStr: connStr})
+		err = saveConns(savedConns)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		status.Clear()
+		fmt.Fprint(status, "Connection saved.")
+
+		return nil
+	}
+}
+
+func oldstartConnection(g *gocui.Gui, v *gocui.View) error {
 	status, err := g.View("conn_status")
 	if err != nil {
 		return err
@@ -369,26 +320,4 @@ func startConnection(g *gocui.Gui, v *gocui.View) error {
 
 	fmt.Fprintf(status, "Test connection successful.")
 	return nil
-}
-
-func spaceText(text string, width int) string {
-	length := len([]rune(text))
-	if width == length {
-		return text
-	}
-
-	spaces := width - length
-	for {
-		text += " "
-		spaces--
-		if spaces == 0 {
-			return text
-		}
-
-		text = " " + text
-		spaces--
-		if spaces == 0 {
-			return text
-		}
-	}
 }

@@ -24,3 +24,20 @@ func (lite *Sqlite) Initialize(connStr string) error {
 	lite.db, err = sqlx.Connect(lite.driver, lite.connStr)
 	return err
 }
+
+func (lite *Sqlite) GetDatabases() ([]DbInfo, error) {
+	return nil, ErrNotSupported
+}
+
+func (lite *Sqlite) GetSchemas() ([]SchemaInfo, error) {
+	//TODO: Investigate schema table
+	return nil, nil
+}
+
+func (lite *Sqlite) GetTables() ([]TableInfo, error) {
+	return nil, nil
+}
+
+func (lite *Sqlite) GetRoles() ([]RoleInfo, error) {
+	return nil, nil
+}

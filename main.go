@@ -1,7 +1,7 @@
 package main
 
-import "github.com/sleepy-day/sqline/app"
+import "github.com/sleepy-day/sqline/texteditor"
 
 func main() {
-	app.Start()
+	texteditor.Start()
 }
