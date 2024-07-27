@@ -1,6 +1,22 @@
 package main
 
 import (
+	"os"
+	"testing"
+
+	"github.com/sleepy-day/sqline/texteditor"
+)
+
+func TestMain(t *testing.T) {
+	f, err := os.ReadFile("testfile.txt")
+	if err != nil {
+		panic(err)
+	}
+	texteditor.Start(f)
+}
+
+/*
+import (
 	"fmt"
 	"os"
 	"testing"

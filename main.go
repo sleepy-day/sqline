@@ -1,7 +1,15 @@
 package main
 
-import "github.com/sleepy-day/sqline/texteditor"
+import (
+	"os"
+
+	"github.com/sleepy-day/sqline/texteditor"
+)
 
 func main() {
-	texteditor.Start()
+	f, err := os.ReadFile("testfile.txt")
+	if err != nil {
+		panic(err)
+	}
+	texteditor.Start(f)
 }

@@ -7,10 +7,16 @@ type DocBuffer struct {
 }
 
 type GapBuffer struct {
-	buf              []rune
-	chars            int
-	gapStart, gapEnd int
-	lineStarts       []int
+	buf                        []rune
+	chars                      int
+	gapStart, gapEnd           int
+	lineStarts                 []int
+	lastMove                   int
+	linePos                    int
+	prevLineStart, prevLineEnd int
+	nextLinePos                int
+	followingLinePos           int
+	prevX                      int
 }
 
 type LinePos struct {
@@ -52,6 +58,17 @@ func CreateGapBuffer(text []byte, gapLength int) *GapBuffer {
 	}
 
 	return gap
+}
+
+func (gap *GapBuffer) GetLineCount() int {
+	count := 1
+	for _, v := range gap.buf {
+		if v == '\n' {
+			count++
+		}
+	}
+
+	return count
 }
 
 func (gap *GapBuffer) GetLines(start, end int) [][]rune {
@@ -132,8 +149,6 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 		}
 	}
 
-	fmt.Printf("%+v\n", linePositions)
-
 	if lineStarted {
 		linePositions = append(linePositions, LinePos{
 			start: startPos, end: len(gap.buf),
@@ -188,6 +203,8 @@ func (gap *GapBuffer) Insert(ch rune) {
 		gap.Grow()
 	}
 
+	gap.prevX = -1
+
 	gap.buf[gap.gapStart] = ch
 	gap.chars++
 	gap.gapStart++
@@ -213,23 +230,35 @@ func (gap *GapBuffer) MoveLeft() {
 		return
 	}
 
+	gap.prevX = -1
+
 	gap.buf[gap.gapEnd-1] = rune(gap.buf[gap.gapStart-1])
 	gap.buf[gap.gapStart-1] = rune(-1)
 
+	gap.lastMove = -1
+
 	gap.gapStart--
 	gap.gapEnd--
+
+	gap.CalcLinePosition()
 }
 
 func (gap *GapBuffer) MoveRight() {
-	if gap.gapStart == gap.chars {
+	if gap.gapStart == len(gap.buf) {
 		return
 	}
+
+	gap.prevX = -1
 
 	gap.buf[gap.gapStart] = rune(gap.buf[gap.gapEnd])
 	gap.buf[gap.gapEnd] = rune(-1)
 
+	gap.lastMove = +1
+
 	gap.gapStart++
 	gap.gapEnd++
+
+	gap.CalcLinePosition()
 }
 
 func (gap *GapBuffer) MoveNLeft(n int) {
@@ -255,8 +284,8 @@ func (gap *GapBuffer) MoveNRight(n int) {
 		return
 	}
 
-	if n+gap.gapStart > gap.chars {
-		n = gap.chars - gap.gapStart
+	if gap.gapEnd+n > len(gap.buf) {
+		n = gap.followingLinePos
 	}
 
 	tmp := make([]rune, n)
@@ -268,66 +297,166 @@ func (gap *GapBuffer) MoveNRight(n int) {
 	gap.gapEnd += n
 }
 
+// 1 is startGap - 2
+
+func (gap *GapBuffer) NewLineBehindCursor() rune {
+	if gap.gapStart == 0 || gap.buf[gap.gapStart-1] == '\n' {
+		return 'E'
+	}
+
+	return ' '
+}
+
 func (gap *GapBuffer) MoveUp() {
-	nlCount, steps, firstNl := 0, 0, 0
-	for i := gap.gapStart; i >= 0; i-- {
-		if gap.buf[i] == '\n' && nlCount == 0 {
-			nlCount++
-			firstNl = steps
-		} else if gap.buf[i] == '\n' {
-			nlCount++
+	gap.CalcLinePosition()
+	gap.CalcPrevLineStart()
+
+	if gap.prevX < 0 {
+		gap.prevX = gap.linePos
+	}
+
+	if gap.prevLineStart <= 2 {
+		gap.MoveNLeft(gap.prevLineStart - 1)
+	} else if gap.prevX > 0 && (gap.prevLineStart-gap.linePos) >= gap.prevX {
+		fmt.Printf("%d", gap.prevLineStart)
+		gap.MoveNLeft(gap.prevLineStart - gap.prevX)
+		return
+	} else if prevX > 0 && (gap.prevLineStart-gap.linePos) < gap.prevX {
+		gap.MoveNLeft(gap.linePos + 1)
+		return
+	}
+
+	if gap.prevLineStart-gap.linePos < gap.linePos {
+		fmt.Print("/")
+		gap.MoveNLeft(gap.linePos + 1)
+		return
+	}
+
+	fmt.Print("\\")
+	gap.MoveNLeft(gap.prevLineStart - gap.linePos)
+
+	gap.CalcLinePosition()
+	gap.CalcPrevLineStart()
+}
+
+// 1 is endGap
+
+func (gap *GapBuffer) MoveDown() {
+	gap.CalcLinePosition()
+	gap.CalcNextLineStart()
+
+	if gap.prevX < 0 {
+		gap.prevX = gap.linePos
+	}
+
+	if gap.prevX >= 0 && (gap.followingLinePos-gap.nextLinePos) > gap.prevX {
+		gap.MoveNRight(gap.nextLinePos + gap.prevX)
+		return
+	} else {
+		gap.MoveNRight(gap.followingLinePos - 1)
+		return
+	}
+
+	if gap.nextLinePos == 0 && gap.followingLinePos > 0 {
+		gap.MoveNRight(gap.followingLinePos)
+		return
+	}
+
+	if gap.nextLinePos+1 == gap.followingLinePos {
+		gap.MoveNRight(gap.nextLinePos)
+		return
+	}
+
+	if gap.followingLinePos+gap.gapEnd == len(gap.buf) {
+		gap.MoveNRight(gap.followingLinePos)
+		return
+	}
+
+	if gap.followingLinePos-gap.nextLinePos < gap.linePos {
+		gap.MoveNRight(gap.followingLinePos - 1)
+		return
+	}
+
+	gap.MoveNRight(gap.nextLinePos + gap.linePos)
+
+	gap.CalcLinePosition()
+	gap.CalcNextLineStart()
+}
+
+func (gap *GapBuffer) CalcNextLineStart() {
+	gap.nextLinePos = 0
+	gap.followingLinePos = 0
+
+	firstHit := false
+	pos := 0
+	for i := gap.gapEnd; i < len(gap.buf); i++ {
+		pos++
+		if gap.buf[i] == '\n' {
+			if !firstHit {
+				gap.nextLinePos = pos
+				firstHit = true
+				continue
+			}
+
 			break
 		}
-		steps++
 	}
 
-	if nlCount == 0 {
-		gap.MoveNLeft(gap.gapStart)
-		return
-	}
+	gap.followingLinePos = pos
+}
 
-	if firstNl <= steps-firstNl {
-		gap.MoveNLeft(steps - firstNl)
-		return
-	}
+func (gap *GapBuffer) LinePositions() (int, int, int, int) {
+	return gap.prevLineStart, gap.nextLinePos, gap.followingLinePos, gap.linePos
+}
 
-	if firstNl > steps-firstNl {
-		gap.MoveNLeft(firstNl)
-		return
+func (gap *GapBuffer) CalcPrevLineStart() {
+	gap.prevLineStart = 0
+	gap.prevLineEnd = 0
+
+	firstHit := false
+	for i := gap.gapStart - 1; i >= 0; i-- {
+		if gap.buf[i] == '\n' {
+			if !firstHit {
+				firstHit = true
+				gap.prevLineEnd = gap.prevLineStart
+				gap.prevLineStart++
+				continue
+			}
+
+			return
+		}
+		gap.prevLineStart++
 	}
 }
 
-func (gap *GapBuffer) MoveDown() {
-	nlCount, steps, firstNl := 0, 0, 0
-	for i := gap.gapEnd; i < gap.gapEnd+gap.chars; i++ {
-		if gap.buf[i] == '\n' && nlCount == 0 {
-			nlCount++
-			firstNl = steps
-		} else if gap.buf[i] == '\n' {
-			nlCount++
-			break
-		}
-		steps++
+func (gap *GapBuffer) CalcLinePosition() {
+	if gap.gapStart == 0 {
+		gap.linePos = 0
 	}
 
-	linePos := 0
-	for i := gap.gapStart; i >= 0; i-- {
+	pos := 0
+	for i := gap.gapStart - 1; i >= 0; i-- {
 		if gap.buf[i] == '\n' {
 			break
 		}
-
-		linePos++
+		pos++
 	}
 
-	if nlCount == 0 {
-		gap.MoveNRight(gap.chars)
-		return
+	gap.linePos = pos
+}
+
+func (gap *GapBuffer) CharAtCursor() rune {
+	if gap.gapStart == 0 {
+		return -1
 	}
 
-	if firstNl <= steps-firstNl {
-		gap.MoveNRight(firstNl + linePos)
-		return
-	}
+	return gap.buf[gap.gapStart-1]
+}
 
-	gap.MoveNRight(steps)
+func (gap *GapBuffer) LastMove() int {
+	return gap.lastMove
+}
+
+func (gap *GapBuffer) PrevX() int {
+	return gap.prevX
 }
