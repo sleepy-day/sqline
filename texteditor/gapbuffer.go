@@ -227,6 +227,10 @@ func (gap *GapBuffer) GetLineCount() int {
 }
 
 func (gap *GapBuffer) GetLines(start, end int) [][]rune {
+	if gap.chars == 0 {
+		return [][]rune{{}}
+	}
+
 	lines := make([][]rune, 0, end-start+1)
 
 	linePositions := []LinePos{}

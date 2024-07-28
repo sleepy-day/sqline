@@ -30,14 +30,23 @@ func CreateEditor(x, y, maxX, maxY int, buf []byte, style *tcell.Style) *Editor 
 		gap = CreateGapBuffer([]byte{}, 4000)
 	}
 
-	return &Editor{
-		xPos:  x,
-		yPos:  y,
-		maxX:  maxX,
-		maxY:  maxY,
-		style: style,
-		gap:   gap,
+	editor := &Editor{
+		xPos:    x,
+		yPos:    y,
+		maxX:    maxX,
+		maxY:    maxY,
+		style:   style,
+		gap:     gap,
+		firstLn: 0,
+		lastLn:  maxY - y,
 	}
+	editor.lines = gap.GetLines(0, maxY-y)
+	editor.lineLengths = make([]int, len(editor.lines))
+	for i, v := range editor.lines {
+		editor.lineLengths[i] = len(v)
+	}
+
+	return editor
 }
 
 func (edit *Editor) HandleInput(ev tcell.Event) {
@@ -117,20 +126,17 @@ func (edit *Editor) HandleInput(ev tcell.Event) {
 			edit.insert('\n')
 		case event.Key() == tcell.KeyBackspace2:
 			if edit.curX > 0 {
-				edit.gap.Delete(true)
+				edit.delete(true)
 				edit.curX--
-				edit.updateLines = true
 			} else if edit.curY > 0 {
 				edit.curY--
 				edit.curX = edit.lineLengths[edit.curY]
-				edit.gap.Delete(true)
-				edit.updateLines = true
+				edit.delete(true)
 			}
 			break
 		case event.Key() == tcell.KeyDelete:
 			if edit.curX != edit.lineLengths[edit.curY] && edit.curY != len(edit.lineLengths)-1 {
-				edit.gap.Delete(false)
-				edit.updateLines = true
+				edit.delete(false)
 			}
 		default:
 			rn := event.Rune()
@@ -139,17 +145,15 @@ func (edit *Editor) HandleInput(ev tcell.Event) {
 			}
 			edit.gap.prevX = -1
 			edit.insert(rn)
-			edit.lineLengths[edit.curY]++
 			edit.curX++
 			edit.gap.prevX = edit.curX
 		}
 	}
 
 	if edit.updateLines {
-		edit.lines = edit.gap.GetLines(edit.firstLn, edit.gap.GetLineCount())
-		tmp := make([]int, edit.lastLn)
-		copy(tmp, edit.lineLengths)
-		edit.lineLengths = tmp
+		edit.lastLn = edit.gap.GetLineCount()
+		edit.lines = edit.gap.GetLines(edit.firstLn, edit.lastLn)
+
 		edit.lineLengths = make([]int, len(edit.lines))
 		for i, j := edit.firstLn, 0; i <= edit.lastLn && j < len(edit.lines); i, j = i+1, j+1 {
 			edit.lineLengths[i] = len(edit.lines[j])
@@ -184,12 +188,26 @@ func (edit *Editor) insert(ch rune) {
 func (edit *Editor) Render(screen tcell.Screen) {
 	screen.Fill(' ', *edit.style)
 	screen.Sync()
+	screen.ShowCursor(edit.xPos+edit.curX+1, edit.yPos+edit.curY+1)
 
+	for i := range edit.maxX - edit.xPos {
+		if i == 0 {
+			screen.SetContent(edit.xPos, edit.yPos, tcell.RuneULCorner, nil, *edit.style)
+			continue
+		}
+		screen.SetContent(edit.xPos+i, edit.yPos, tcell.RuneHLine, nil, *edit.style)
+	}
+	for i := range edit.maxY - edit.yPos {
+		if i == 0 {
+			continue
+		}
+		screen.SetContent(edit.xPos, edit.yPos+i, tcell.RuneVLine, nil, *edit.style)
+	}
 	for i, v := range edit.lines {
 		if len(v) > 1 {
-			screen.SetContent(edit.xPos, edit.yPos+i, v[0], v[1:], *edit.style)
-		} else {
-			screen.SetContent(edit.xPos, edit.yPos+i, v[0], nil, *edit.style)
+			screen.SetContent(edit.xPos+1, edit.yPos+i+1, v[0], v[1:], *edit.style)
+		} else if len(v) != 0 {
+			screen.SetContent(edit.xPos+1, edit.yPos+i+1, v[0], nil, *edit.style)
 		}
 	}
 }
