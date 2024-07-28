@@ -112,11 +112,13 @@ func Start(buf []byte) {
 
 					if prevX < lineLengths[y] {
 						x = prevX
-					} else {
+					} else if lineLengths[y] == 1 {
 						x = lineLengths[y] - 1
+					} else {
+						x = lineLengths[y]
 					}
 				} else if y == len(lineLengths)-1 && x < lineLengths[y] {
-					x = lineLengths[y] - 1
+					x = lineLengths[y]
 					prevX = x
 					gap.MoveDown()
 				}
@@ -145,11 +147,25 @@ func Start(buf []byte) {
 			case event.Key() == tcell.KeyEnter:
 				y++
 				x = 0
-			case event.Key() == tcell.KeyCtrlC:
-				screen.Fini()
-				return
-			case event.Key() == tcell.KeyBackspace:
-
+				prevX = -1
+				insert('\n')
+			case event.Key() == tcell.KeyBackspace2:
+				if x > 0 {
+					gap.Delete(true)
+					x--
+					updateLines = true
+				} else if y > 0 {
+					y--
+					x = lineLengths[y]
+					gap.Delete(true)
+					updateLines = true
+				}
+				break
+			case event.Key() == tcell.KeyDelete:
+				if x != lineLengths[y] && y != len(lineLengths)-1 {
+					gap.Delete(false)
+					updateLines = true
+				}
 			default:
 				rn := event.Rune()
 				if rn == 0 {
@@ -163,7 +179,6 @@ func Start(buf []byte) {
 			}
 		}
 		update()
-		debugInfo()
 	}
 }
 
@@ -174,16 +189,18 @@ func insert(ch rune) {
 
 func update() {
 	if updateLines {
-		lines = gap.GetLines(lineStart, lineEnd)
+		lines = gap.GetLines(lineStart, gap.GetLineCount())
 		tmp := make([]int, lineEnd)
 		copy(tmp, lineLengths)
 		lineLengths = tmp
+		lineLengths = make([]int, len(lines))
 		for i, j := lineStart, 0; i <= lineEnd && j < len(lines); i, j = i+1, j+1 {
 			lineLengths[i] = len(lines[j])
 		}
 
 		updateLines = false
 
+		screen.Fill(' ', defStyle)
 		updateBufferDisplay()
 	}
 
@@ -226,11 +243,22 @@ func debugInfo() {
 }
 
 func updateBufferDisplay() {
+	screen.Fill(' ', defStyle)
+	screen.Sync()
 	for i, v := range lines {
-		var rest []rune = nil
-		if len(v) > 1 {
-			rest = v[1:]
+		for j, ch := range v {
+			if ch == '\n' {
+				screen.SetContent(j, i, '$', nil, defStyle)
+			} else {
+				screen.SetContent(j, i, ch, nil, defStyle)
+			}
 		}
-		screen.SetContent(0, i, v[0], rest, defStyle)
+		/*
+			if len(v) > 1 {
+				screen.SetContent(0, i, v[0], v[1:], defStyle)
+			} else {
+				screen.SetContent(0, i, v[0], nil, defStyle)
+			}
+		*/
 	}
 }
