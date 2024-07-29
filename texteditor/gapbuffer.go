@@ -43,7 +43,7 @@ func CreateGapBuffer(text []byte, gapLength int) *GapBuffer {
 		buf:   buf,
 		chars: len(utfText),
 		start: 0,
-		end:   gapLength,
+		end:   gapLength - 1,
 	}
 
 	i := 0
@@ -89,7 +89,7 @@ func (gap *GapBuffer) Delete(backspace bool) {
 	}
 
 	gap.buf[gap.end] = -1
-	gap.end++
+	gap.end--
 	return
 }
 
@@ -143,6 +143,11 @@ func (gap *GapBuffer) MoveRight() {
 	gap.end++
 
 	gap.CalcLinePosition()
+}
+
+func (gap *GapBuffer) moveGapRight() {
+	gap.start++
+	gap.end++
 }
 
 func (gap *GapBuffer) MoveNLeft(n int) {
@@ -253,6 +258,14 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 		}
 
 		if !lineStarted && gap.buf[i] == '\n' && line >= start && line <= end {
+			if i < gap.start-2 && gap.buf[i+1] == '\n' {
+				linePositions = append(linePositions, LinePos{
+					start: i, end: i, splitLine: false,
+				})
+				line++
+				continue
+			}
+
 			linePositions = append(linePositions, LinePos{
 				start: i, end: i, splitLine: false,
 			})
@@ -292,6 +305,14 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 		}
 
 		if !lineStarted && gap.buf[i] == '\n' && line >= start && line <= end {
+			if i < gap.end-1 && gap.buf[i+1] == '\n' {
+				linePositions = append(linePositions, LinePos{
+					start: i, end: i, splitLine: false,
+				})
+				line++
+				continue
+			}
+
 			linePositions = append(linePositions, LinePos{
 				start: i, end: i, splitLine: split,
 			})
@@ -315,11 +336,12 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 				break
 			}
 		}
+
 	}
 
 	if lineStarted {
 		linePositions = append(linePositions, LinePos{
-			start: startPos, end: len(gap.buf),
+			start: startPos, end: len(gap.buf) - 1,
 		})
 	}
 
@@ -339,12 +361,16 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 		}
 
 		if v.start == v.end {
-			lines = append(lines, []rune{' '})
+			lines = append(lines, []rune{})
 			continue
 		}
 
 		lineBuf := append([]rune(nil), gap.buf[v.start:v.end]...)
 		lines = append(lines, lineBuf)
+	}
+
+	if gap.buf[linePositions[len(linePositions)-1].end] == '\n' {
+		lines = append(lines, []rune{})
 	}
 
 	return lines

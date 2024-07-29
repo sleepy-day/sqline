@@ -64,11 +64,24 @@ func Run() {
 		{Label: []rune("MySql"), Value: "mysql"},
 		{Label: []rune("Sql Server"), Value: "mssql"},
 	}
-
 	list := components.CreateList(0, 0, Scale(0.15, maxX), Scale(0.2, maxY), items, &defStyle)
+
+	treeItems := []*components.TreeItem{
+		{Label: []rune("Poofter"), Value: "Poofter", Children: []*components.TreeItem{
+			{Label: []rune("SubPoofter"), Value: "Poofter", Children: []*components.TreeItem{
+				{Label}
+			}},
+		}},
+	}
+
+	tree := components.CreateTree(Scale(0.3, maxX), 0, Scale(0.7, maxX), maxY, treeItems, &defStyle)
+	tbox := components.CreateTextBox(20, 10, 50, &defStyle)
 
 	var ev tcell.Event
 	edit := true
+	text := false
+	treefocus := false
+	listfocus := false
 	for {
 		ev = screen.PollEvent()
 		switch ev := ev.(type) {
@@ -80,11 +93,31 @@ func Run() {
 			case tcell.KeyCtrlC:
 				return
 			case tcell.KeyF5:
-				edit = !edit
+				edit = true
+				text = false
+				treefocus = false
+				listfocus = false
+			case tcell.KeyF6:
+				text = true
+				edit = false
+				treefocus = false
+				listfocus = false
+			case tcell.KeyF7:
+				treefocus = true
+				edit = false
+				text = false
+				listfocus = false
+			case tcell.KeyF8:
+				listfocus = true
+				edit = false
+				text = false
+				treefocus = false
 			default:
 				if edit {
 					editor.HandleInput(ev)
 				} else {
+					tbox.HandleInput(ev)
+					tree.HandleInput(ev)
 					list.HandleInput(ev)
 				}
 			}
@@ -93,6 +126,8 @@ func Run() {
 		screen.Sync()
 		list.Render(screen)
 		editor.Render(screen)
+		tbox.Render(screen)
+		//tree.Render(screen)
 		screen.Show()
 	}
 }
