@@ -4,6 +4,15 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+var (
+	tabWidth       int = 4
+	indent         int = 0
+	twoSpacedTab       = []rune("  ")
+	fourSpacedTab      = []rune("    ")
+	eightSpacedTab     = []rune("         ")
+	tabs               = fourSpacedTab
+)
+
 type Editor struct {
 	gap *GapBuffer
 
@@ -16,6 +25,7 @@ type Editor struct {
 	lineLengths     []int
 	updateLines     bool
 	prevX           int
+	tabsBehind      int
 
 	style *tcell.Style
 
@@ -56,7 +66,7 @@ func (edit *Editor) HandleInput(ev tcell.Event) {
 		case event.Key() == tcell.KeyUp:
 			if edit.curY != 0 {
 				edit.curY--
-				edit.gap.MoveUp()
+				edit.tabsBehind = edit.gap.MoveUp()
 
 				if edit.gap.prevX < 0 {
 					edit.gap.prevX = edit.curX
@@ -73,13 +83,13 @@ func (edit *Editor) HandleInput(ev tcell.Event) {
 				}
 			} else if edit.curY == 0 && edit.curX > 0 {
 				edit.curX = 0
-				edit.gap.MoveUp()
+				edit.tabsBehind = edit.gap.MoveUp()
 				edit.gap.prevX = 0
 			}
 		case event.Key() == tcell.KeyDown:
 			if edit.curY != edit.maxY && edit.curY < len(edit.lineLengths)-1 {
 				edit.curY++
-				edit.gap.MoveDown()
+				edit.tabsBehind = edit.gap.MoveDown()
 
 				if edit.gap.prevX < 0 {
 					edit.gap.prevX = edit.curX
@@ -92,31 +102,52 @@ func (edit *Editor) HandleInput(ev tcell.Event) {
 				} else {
 					edit.curX = edit.lineLengths[edit.curY]
 				}
+
 			} else if edit.curY == len(edit.lineLengths)-1 && edit.curX < edit.lineLengths[edit.curY] {
 				edit.curX = edit.lineLengths[edit.curY]
 				edit.gap.prevX = edit.curX
-				edit.gap.MoveDown()
+				edit.tabsBehind = edit.gap.MoveDown()
+
 			}
 		case event.Key() == tcell.KeyLeft:
 			if edit.curX == 0 && edit.curY > 0 {
 				edit.gap.prevX = -1
 				edit.curY--
 				edit.curX = edit.lineLengths[edit.curY]
-				edit.gap.MoveLeft()
+				edit.tabsBehind = edit.gap.MoveLeft()
+
 			} else if edit.curX != 0 {
+
 				edit.gap.prevX = -1
 				edit.curX--
-				edit.gap.MoveLeft()
+				edit.tabsBehind = edit.gap.MoveLeft()
+
 			}
 		case event.Key() == tcell.KeyRight:
 			if (edit.lineLengths[edit.curY] == 1 || edit.curX == edit.lineLengths[edit.curY]) && edit.curY < len(edit.lineLengths)-1 {
 				edit.gap.prevX = -1
 				edit.curX = 0
 				edit.curY++
+
+				ch := edit.gap.PeekAhead()
+				if ch == '\n' {
+					edit.tabsBehind = 0
+				} else if ch == '\t' {
+					edit.tabsBehind++
+				}
+
 				edit.gap.MoveRight()
 			} else if edit.curX < edit.lineLengths[edit.curY] {
 				edit.gap.prevX = -1
 				edit.curX++
+
+				ch := edit.gap.PeekAhead()
+				if ch == '\n' {
+					edit.tabsBehind = 0
+				} else if ch == '\t' {
+					edit.tabsBehind++
+				}
+
 				edit.gap.MoveRight()
 			}
 		case event.Key() == tcell.KeyEnter:
@@ -163,6 +194,10 @@ func (edit *Editor) HandleInput(ev tcell.Event) {
 	}
 }
 
+func (edit *Editor) Sync(maxX, maxY int) {
+	edit.maxX, edit.maxY = maxX, maxY
+}
+
 func (edit *Editor) GetCursorPos() (x, y int) {
 	return edit.curX, edit.curY
 }
@@ -182,13 +217,16 @@ func (edit *Editor) delete(backwards bool) {
 
 func (edit *Editor) insert(ch rune) {
 	edit.gap.Insert(ch)
+	if ch == '\t' {
+		edit.tabsBehind++
+	} else if ch == '\n' {
+		edit.tabsBehind = 0
+	}
 	edit.updateLines = true
 }
 
 func (edit *Editor) Render(screen tcell.Screen) {
-	screen.Fill(' ', *edit.style)
-	screen.Sync()
-	screen.ShowCursor(edit.xPos+edit.curX+1, edit.yPos+edit.curY+1)
+	screen.ShowCursor(edit.xPos+edit.curX+(edit.tabsBehind*(tabWidth))+1, edit.yPos+edit.curY+1)
 
 	for i := range edit.maxX - edit.xPos {
 		if i == 0 {
@@ -197,17 +235,23 @@ func (edit *Editor) Render(screen tcell.Screen) {
 		}
 		screen.SetContent(edit.xPos+i, edit.yPos, tcell.RuneHLine, nil, *edit.style)
 	}
+
 	for i := range edit.maxY - edit.yPos {
 		if i == 0 {
 			continue
 		}
 		screen.SetContent(edit.xPos, edit.yPos+i, tcell.RuneVLine, nil, *edit.style)
 	}
+
 	for i, v := range edit.lines {
-		if len(v) > 1 {
-			screen.SetContent(edit.xPos+1, edit.yPos+i+1, v[0], v[1:], *edit.style)
-		} else if len(v) != 0 {
-			screen.SetContent(edit.xPos+1, edit.yPos+i+1, v[0], nil, *edit.style)
+		spaces := 0
+		for j, ch := range v {
+			if ch == '\t' {
+				screen.SetContent(edit.xPos+j+spaces+1, edit.yPos+i+1, tabs[0], tabs[1:], *edit.style)
+				spaces += tabWidth
+				continue
+			}
+			screen.SetContent(edit.xPos+j+spaces+1, edit.yPos+i+1, ch, nil, *edit.style)
 		}
 	}
 }

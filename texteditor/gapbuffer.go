@@ -1,5 +1,9 @@
 package texteditor
 
+var (
+	tabSpaces = 4
+)
+
 type DocBuffer struct {
 	bufs []GapBuffer
 }
@@ -12,6 +16,7 @@ type GapBuffer struct {
 	lastMove                   int
 	linePos                    int
 	prevLineStart, prevLineEnd int
+	tabsBehind                 int
 	nextLinePos                int
 	followingLinePos           int
 	prevX                      int
@@ -103,9 +108,9 @@ func (gap *GapBuffer) Grow() {
 	gap.end += 200
 }
 
-func (gap *GapBuffer) MoveLeft() {
+func (gap *GapBuffer) MoveLeft() int {
 	if gap.start == 0 {
-		return
+		return 0
 	}
 
 	gap.prevX = -1
@@ -119,10 +124,11 @@ func (gap *GapBuffer) MoveLeft() {
 	gap.end--
 
 	gap.CalcLinePosition()
+	return gap.tabsBehind
 }
 
 func (gap *GapBuffer) MoveRight() {
-	if gap.start == len(gap.buf) {
+	if gap.start == len(gap.buf) || gap.end == len(gap.buf) {
 		return
 	}
 
@@ -175,7 +181,7 @@ func (gap *GapBuffer) MoveNRight(n int) {
 	gap.end += n
 }
 
-func (gap *GapBuffer) MoveUp() {
+func (gap *GapBuffer) MoveUp() int {
 	gap.CalcLinePosition()
 	gap.CalcPrevLineStart()
 
@@ -192,10 +198,11 @@ func (gap *GapBuffer) MoveUp() {
 	}
 
 	gap.CalcLinePosition()
-	gap.CalcPrevLineStart()
+
+	return gap.tabsBehind
 }
 
-func (gap *GapBuffer) MoveDown() {
+func (gap *GapBuffer) MoveDown() int {
 	gap.CalcLinePosition()
 	gap.CalcNextLineStart()
 
@@ -212,7 +219,8 @@ func (gap *GapBuffer) MoveDown() {
 	}
 
 	gap.CalcLinePosition()
-	gap.CalcNextLineStart()
+
+	return gap.tabsBehind
 }
 
 func (gap *GapBuffer) GetLineCount() int {
@@ -358,8 +366,6 @@ func (gap *GapBuffer) Buf() []rune {
 	return gap.buf
 }
 
-// 1 is startGap - 2
-
 func (gap *GapBuffer) NewLineBehindCursor() rune {
 	if gap.start == 0 || gap.buf[gap.start-1] == '\n' {
 		return 'E'
@@ -400,6 +406,7 @@ func (gap *GapBuffer) CalcPrevLineStart() {
 
 	firstHit := false
 	for i := gap.start - 1; i >= 0; i-- {
+
 		if gap.buf[i] == '\n' {
 			if !firstHit {
 				firstHit = true
@@ -415,19 +422,37 @@ func (gap *GapBuffer) CalcPrevLineStart() {
 }
 
 func (gap *GapBuffer) CalcLinePosition() {
+	gap.linePos = 0
+	gap.tabsBehind = 0
 	if gap.start == 0 {
-		gap.linePos = 0
+		return
 	}
 
-	pos := 0
 	for i := gap.start - 1; i >= 0; i-- {
 		if gap.buf[i] == '\n' {
 			break
 		}
-		pos++
+		if gap.buf[i] == '\t' {
+			gap.tabsBehind++
+		}
+		gap.linePos++
+	}
+}
+
+func (gap *GapBuffer) PeekBehind() rune {
+	if gap.start == 0 {
+		return -1
 	}
 
-	gap.linePos = pos
+	return gap.buf[gap.start-1]
+}
+
+func (gap *GapBuffer) PeekAhead() rune {
+	if gap.end == len(gap.buf) {
+		return -1
+	}
+
+	return gap.buf[gap.end]
 }
 
 func (gap *GapBuffer) CharAtCursor() rune {
