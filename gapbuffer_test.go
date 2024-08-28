@@ -1,268 +1,134 @@
 package main
 
 import (
-	"os"
 	"testing"
 
-	"github.com/sleepy-day/sqline/texteditor"
+	"github.com/sleepy-day/sqline/util"
 )
-
-func TestMain(t *testing.T) {
-	f, err := os.ReadFile("testfile.txt")
-	if err != nil {
-		panic(err)
-	}
-	texteditor.Start(f)
-}
-
-/*
-import (
-	"fmt"
-	"os"
-	"testing"
-
-	"github.com/sleepy-day/sqline/texteditor"
-)
-
-func TestGapBufferInit(t *testing.T) {
-	f, err := os.ReadFile("testfile.txt")
-	if err != nil {
-		t.Fatalf("Failed to open file: %s", err.Error())
-	}
-
-	gap := texteditor.CreateGapBuffer(f, 200)
-
-	if len(gap.LineStarts()) != 8 {
-		t.Fatalf("Failed to init LineStarts correctly: got %d", len(gap.LineStarts()))
-	}
-
-	buf := make([]rune, len(gap.Buf()))
-	copy(buf, gap.Buf())
-
-	for i := 0; i < 200; i++ {
-		if buf[i] >= 0 {
-			t.Fatalf("Found non empty char in buf")
-		}
-	}
-
-	if len(buf) != 270 {
-		t.Fatalf("Incorrect length in gap buffer: %d", len(buf))
-	}
-}
-
-func TestMovementLimitedWithinChars(t *testing.T) {
-	buf := []byte{}
-
-	gap := texteditor.CreateGapBuffer(buf, 200)
-
-	start, end := gap.GapStartAndEnd()
-
-	gap.MoveLeft()
-	gap.MoveLeft()
-	gap.MoveLeft()
-	gap.MoveLeft()
-
-	startL, endL := gap.GapStartAndEnd()
-
-	if start != startL || end != endL {
-		t.Fatalf("Error on moving left: moved out of range.")
-	}
-
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-
-	startR, endR := gap.GapStartAndEnd()
-
-	if start != startR || end != endR {
-		t.Fatalf("Error on moving right: moved out of range.")
-	}
-}
-
-func TestMovement(t *testing.T) {
-	f, err := os.ReadFile("testfile.txt")
-	if err != nil {
-		t.Fatalf("Failed to openn file: %s", err.Error())
-	}
-
-	gap := texteditor.CreateGapBuffer(f, 200)
-	gapN := texteditor.CreateGapBuffer(f, 200)
-
-	for range 5 {
-		gap.MoveRight()
-	}
-
-	gapN.MoveNRight(5)
-
-	buf := gap.Buf()
-	bufN := gapN.Buf()
-
-	for i := range buf {
-		if buf[i] != bufN[i] {
-			t.Fatal()
-		}
-	}
-
-	for range 3 {
-		gap.MoveLeft()
-	}
-
-	gapN.MoveNLeft(3)
-
-	buf = gap.Buf()
-	bufN = gapN.Buf()
-
-	for i := range buf {
-		if buf[i] != bufN[i] {
-			t.Fatalf("Buffers do not match: %s is not equal to %s", string(buf[i]), string(bufN[i]))
-		}
-	}
-
-	gap.MoveUp()
-	gapN.MoveUp()
-
-	buf = gap.Buf()
-	bufN = gapN.Buf()
-
-	for i := range buf {
-		if buf[i] != bufN[i] {
-			t.Fatalf("Buffers do not match: %s is not equal to %s", string(buf[i]), string(bufN[i]))
-		}
-	}
-
-	gap.MoveNRight(15)
-	gapN.MoveNRight(2)
-	gapN.MoveDown()
-
-	buf = gap.Buf()
-	bufN = gapN.Buf()
-
-	for i := range buf {
-		if buf[i] != bufN[i] {
-			t.Fatalf("Buffers do not match: %s is not equal to %s", string(buf[i]), string(bufN[i]))
-		}
-	}
-}
-
-func printBuf(buf []rune) {
-	fmt.Println()
-
-	for _, v := range buf {
-		if v < 0 {
-			fmt.Print("X")
-		} else {
-			fmt.Print(string(v))
-		}
-	}
-
-	fmt.Println()
-}
-
-func TestGrow(t *testing.T) {
-	f, err := os.ReadFile("testfile.txt")
-	if err != nil {
-		t.Fatalf("Failed to open file: %s", err.Error())
-	}
-
-	gap := texteditor.CreateGapBuffer(f, 200)
-	gapCmp := texteditor.CreateGapBuffer(f, 200)
-
-	gap.MoveNRight(20)
-	gapCmp.MoveNRight(20)
-
-	gap.Grow()
-
-	buf := gap.Buf()
-	bufCmp := gapCmp.Buf()
-
-	start, _ := gap.GapStartAndEnd()
-	for i := 0; i < start; i++ {
-		if buf[i] != bufCmp[i] {
-			t.Fatalf("Buffers do not match: %s is not equal to %s", string(buf[i]), string(bufCmp[i]))
-		}
-	}
-
-	_, end := gap.GapStartAndEnd()
-	_, endCmp := gapCmp.GapStartAndEnd()
-	for i, j := end, endCmp; i < len(buf); i, j = i+1, j+1 {
-		if buf[i] != bufCmp[j] {
-			t.Fatalf("Buffers do not match: %s is not equal to %s", string(buf[i]), string(bufCmp[j]))
-		}
-	}
-}
 
 func TestGetLines(t *testing.T) {
-	f, err := os.ReadFile("testfile.txt")
-	if err != nil {
-		t.Fatalf("Failed to open file: %s", err.Error())
+	text := `Test Line One
+Test Line Two
+Test Line Three
+Line Four Test
+Testing Line Five
+1
+2
+3
+4
+5`
+
+	gap, _ := util.CreateGapBuffer([]byte(text), 200)
+
+	lines := gap.GetLines(0, 99)
+
+	if len(lines) != 10 {
+		t.Fatalf("incorrect amount of lines returned, expected 10 got %d", len(lines))
 	}
 
-	gap := texteditor.CreateGapBuffer(f, 200)
-	gapCmp := texteditor.CreateGapBuffer(f, 300)
+	if string(lines[0]) != "Test Line One\n" {
+		t.Fatalf("line doesn't match %s", string(lines[0]))
+	}
+	if string(lines[1]) != "Test Line Two\n" {
+		t.Fatalf("line doesn't match %s length %d", string(lines[1]), len(lines[1]))
+	}
+	if string(lines[2]) != "Test Line Three\n" {
+		t.Fatalf("line doesn't match %s", string(lines[2]))
+	}
+	if string(lines[3]) != "Line Four Test\n" {
+		t.Fatalf("line doesn't match %s", string(lines[3]))
+	}
+	if string(lines[4]) != "Testing Line Five\n" {
+		t.Fatalf("line doesn't match %s", string(lines[4]))
+	}
+	if string(lines[5]) != "1\n" {
+		t.Fatalf("line doesn't match %s", string(lines[5]))
+	}
+	if string(lines[6]) != "2\n" {
+		t.Fatalf("line doesn't match %s", string(lines[6]))
+	}
+	if string(lines[7]) != "3\n" {
+		t.Fatalf("line doesn't match %s", string(lines[7]))
+	}
+	if string(lines[8]) != "4\n" {
+		t.Fatalf("line doesn't match %s", string(lines[8]))
+	}
+	if string(lines[9]) != "5" {
+		t.Fatalf("line doesn't match %s", string(lines[9]))
+	}
 
-	gap.MoveNRight(27)
+	lines = gap.GetLines(2, 6)
 
-	lines := gap.GetLines(1, 4)
-	linesCmp := gapCmp.GetLines(1, 4)
+	if len(lines) != 5 {
+		t.Fatalf("incorrect amount of lines returned, expected 5 got %d", len(lines))
+	}
 
-	for i, v := range lines {
-		for j, ch := range v {
-			if ch != linesCmp[i][j] {
-				t.Fatalf("Buffers do not match: %s is not equal to %s", string(ch), string(linesCmp[i][j]))
-			}
-		}
+	if string(lines[0]) != "Test Line Three\n" {
+		t.Fatalf("line doesn't match, got %s", string(lines[0]))
+	}
+	if string(lines[1]) != "Line Four Test\n" {
+		t.Fatalf("line doesn't match %s", string(lines[1]))
+	}
+	if string(lines[2]) != "Testing Line Five\n" {
+		t.Fatalf("line doesn't match %s", string(lines[2]))
+	}
+	if string(lines[3]) != "1\n" {
+		t.Fatalf("line doesn't match %s", string(lines[3]))
+	}
+	if string(lines[4]) != "2\n" {
+		t.Fatalf("line doesn't match %s", string(lines[4]))
 	}
 }
 
-/*
+func TestGetLinesAfterInsert(t *testing.T) {
+	text := `InsertHere->
+And
+Here->`
 
-	gap.MoveNLeft(5)
-	newBuf = make([]rune, len(gap.Buf()))
-	copy(newBuf, gap.Buf())
+	gap, _ := util.CreateGapBuffer([]byte(text), 200)
 
-	for i := 0; i < len(buf); i++ {
-		if buf[i] != newBuf[i] {
-			t.Fatalf("Error comparing buffers after MoveNLeft(): %s did not match %s", string(buf[i]), string(newBuf[i]))
-		}
+	gap.Insert('X', util.Position{Line: 0, Col: 14})
+	gap.Insert('X', util.Position{Line: 2, Col: 7})
+
+	lines := gap.GetLines(0, 100)
+
+	if string(lines[0]) != "InsertHere->X\n" {
+		t.Fatalf("line doesn't match %s", string(lines[0]))
 	}
-
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-	gap.MoveRight()
-
-	copy(newBuf, gap.Buf())
-
-	gap.MoveNLeft(5)
-
-	gap.MoveNRight(5)
-
-	for _, v := range gap.Buf() {
-		if v < 0 {
-			fmt.Print("X")
-		} else {
-			fmt.Print(string(v))
-		}
-	}
-	fmt.Println()
-
-	for _, v := range newBuf {
-		if v < 0 {
-			fmt.Print("X")
-		} else {
-			fmt.Print(string(v))
-		}
-	}
-
-	for i, v := range gap.Buf() {
-		if v != newBuf[i] {
-			t.Fatalf("Error comparing buffers after MoveNRight(): %s did not match %s", string(v), string(newBuf[i]))
-		}
+	if string(lines[2]) != "Here->X" {
+		t.Fatalf("line doesn't match %s", string(lines[2]))
 	}
 }
-*/
+
+func TestGetTextInRange(t *testing.T) {
+	text := `Test Line One
+Test Line Two
+Test Line Three
+Line Four Test
+Testing Line Five
+1
+2
+3
+4
+5`
+
+	expected := `ine Two
+Test Line Three
+Line Four Test
+Testing Line Five
+1
+2
+3
+`
+
+	gap, _ := util.CreateGapBuffer([]byte(text), 200)
+
+	result, _ := gap.GetTextInRange(
+		util.Position{Line: 1, Col: 6},
+		util.Position{Line: 7, Col: 2},
+	)
+
+	if string(result) != expected {
+		t.Fatalf("error in GetTextInRange, expected %s got %s", expected, string(result))
+	}
+}

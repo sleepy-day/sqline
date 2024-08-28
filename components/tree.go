@@ -4,6 +4,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+var (
+	FirstSpacing  = []rune(" ")
+	SecondSpacing = []rune("  ")
+)
+
 type TreeItem struct {
 	expanded bool
 	Label    []rune
@@ -16,6 +21,7 @@ type TreeItem struct {
 type Tree struct {
 	left, top     int
 	right, bottom int
+	label         []rune
 	selected      int
 	offset        int
 	treeItems     []*TreeItem
@@ -24,12 +30,13 @@ type Tree struct {
 	visibleItems  []*TreeItem
 }
 
-func CreateTree(left, top, right, bottom int, treeItems []*TreeItem, style *tcell.Style) *Tree {
+func CreateTree(left, top, right, bottom int, treeItems []*TreeItem, label []rune, style *tcell.Style) *Tree {
 	tree := &Tree{
 		left:      left,
 		top:       top,
 		right:     right,
 		bottom:    bottom,
+		label:     label,
 		treeItems: treeItems,
 		style:     style,
 		hlStyle:   tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite),
@@ -42,6 +49,17 @@ func CreateTree(left, top, right, bottom int, treeItems []*TreeItem, style *tcel
 	}
 
 	return tree
+}
+
+func (tree *Tree) Resize(left, top, right, bottom int) {
+	tree.left = left
+	tree.top = top
+	tree.right = right
+	tree.bottom = bottom
+}
+
+func (tree *Tree) SetItems(items []*TreeItem) {
+	tree.treeItems = items
 }
 
 func (tree *Tree) SelectedItem() *TreeItem {
@@ -107,13 +125,28 @@ func (tree *Tree) Render(screen tcell.Screen) {
 	}
 
 	for i := range tree.right - tree.left {
+		for j := range tree.bottom - tree.top {
+			screen.SetContent(tree.left+i, tree.top+j, ' ', nil, *tree.style)
+		}
+	}
+
+	for i := range tree.right - tree.left + 1 {
 		if i == 0 {
 			screen.SetContent(tree.left, tree.top, tcell.RuneULCorner, nil, *tree.style)
 			screen.SetContent(tree.left, tree.bottom, tcell.RuneLLCorner, nil, *tree.style)
 			continue
+		} else if i == tree.right-tree.left {
+			screen.SetContent(tree.left+i, tree.top, tcell.RuneURCorner, nil, *tree.style)
+			screen.SetContent(tree.left+i, tree.bottom, tcell.RuneLRCorner, nil, *tree.style)
+			continue
 		}
 
-		screen.SetContent(tree.left+i, tree.top, tcell.RuneHLine, nil, *tree.style)
+		topCh := tcell.RuneHLine
+		if i < len(tree.label)+1 && i > 0 {
+			topCh = tree.label[i-1]
+		}
+
+		screen.SetContent(tree.left+i, tree.top, topCh, nil, *tree.style)
 		screen.SetContent(tree.left+i, tree.bottom, tcell.RuneHLine, nil, *tree.style)
 	}
 
@@ -147,12 +180,23 @@ func (tree *Tree) Render(screen tcell.Screen) {
 			offset = tree.visibleItems[i].Level
 		}
 
-		if tree.selected == i {
-			screen.SetContent(tree.left+1+offset, tree.top+j+1, ch, tree.visibleItems[i].Label, tree.hlStyle)
-			continue
+		var label []rune
+		if tree.visibleItems[i].Level == 1 {
+			label = append(label, FirstSpacing...)
+		} else if tree.visibleItems[i].Level == 2 {
+			label = append(label, SecondSpacing...)
 		}
 
-		screen.SetContent(tree.left+1+offset, tree.top+j+1, ch, tree.visibleItems[i].Label, *tree.style)
+		label = append(label, ch)
+		label = append(label, tree.visibleItems[i].Label...)
+
+		style := tree.style
+		if tree.selected == i {
+			style = &tree.hlStyle
+		}
+
+		for k, ch := range label {
+			screen.SetContent(tree.left+offset+k+1, tree.top+j+1, ch, nil, *style)
+		}
 	}
 }
-

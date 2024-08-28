@@ -1,21 +1,174 @@
 package app
 
 import (
+	"errors"
 	"os"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/jmoiron/sqlx"
 	"github.com/sleepy-day/sqline/components"
-	. "github.com/sleepy-day/sqline/shared"
-	"github.com/sleepy-day/sqline/texteditor"
+	"github.com/sleepy-day/sqline/db"
+	"github.com/sleepy-day/sqline/util"
+	"github.com/sleepy-day/sqline/views"
+)
+
+type MainAppState byte
+
+const (
+	NoViewFocused MainAppState = iota
+	NormalMode
+	MainView
+	NewConnView
+	OpenConnView
+	Editor
 )
 
 var (
 	defStyle   tcell.Style = tcell.StyleDefault.Background(tcell.ColorReset).Foreground(tcell.ColorReset)
+	hlStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite)
 	maxX, maxY int
 
-	editor *texteditor.Editor
+	editor *components.Editor
 	screen tcell.Screen
+
+	// Pop up window coords
+	pLeft, pTop, pRight, pBottom int
+	pWidth, pHeight              int = 85, 30
 )
+
+type Sqline struct {
+	state                        MainAppState
+	database                     db.Database
+	screen                       tcell.Screen
+	config                       *util.SqlineConf
+	mainView                     *views.MainView
+	newConnView                  *views.NewConnView
+	openConnView                 *views.OpenConnView
+	maxX, maxY                   int
+	pLeft, pTop, pRight, pBottom int
+	pWidth, pHeight              int
+}
+
+func createSqline(maxX, maxY int, screen tcell.Screen) *Sqline {
+	var buf []byte
+	if len(os.Args) > 1 {
+		filePath := os.Args[1]
+		f, err := os.ReadFile(filePath)
+		if err == nil {
+			buf = f
+		}
+	}
+
+	sqline := Sqline{
+		state:   NormalMode,
+		maxX:    maxX,
+		maxY:    maxY,
+		pWidth:  85,
+		pHeight: 30,
+		screen:  screen,
+	}
+
+	sqline.CalcPopupSize()
+
+	conf, err := util.LoadConf()
+	if err != nil {
+		//TODO: pass error into error message display
+	}
+
+	sqline.config = conf
+	sqline.mainView = views.CreateMainView(0, 0, maxX, maxY, true, true, buf, &defStyle, &hlStyle)
+	sqline.newConnView = views.CreateNewConnView(sqline.pLeft, sqline.pTop, sqline.pRight, sqline.pBottom, &defStyle, &hlStyle, sqline.createTestFunc(), sqline.createSaveFunc())
+	sqline.openConnView = views.CreateOpenConnView(sqline.pLeft, sqline.pTop, sqline.pRight, sqline.pBottom, &defStyle, &hlStyle, sqline.config.SavedConns, sqline.createSelectFunc())
+
+	return &sqline
+}
+
+func (sqline *Sqline) handleError(err error) {
+	panic(err)
+}
+
+func (sqline *Sqline) createTestFunc() views.TestFunc {
+	return func(connStr, driver string) error {
+		db, err := sqlx.Connect(driver, connStr)
+		if err != nil {
+			sqline.handleError(err)
+			return err
+		}
+		defer db.Close()
+
+		return nil
+	}
+}
+
+func (sqline *Sqline) createSelectFunc() views.SelectFunc {
+	return func(dbEntry util.DBEntry) {
+		sqline.setDB(dbEntry)
+	}
+}
+
+func (sqline *Sqline) createSaveFunc() views.SaveFunc {
+	return func(name, connStr, driver string) {
+		sqline.config.SavedConns = append(sqline.config.SavedConns, util.DBEntry{
+			Name:    name,
+			ConnStr: connStr,
+			Driver:  driver,
+		})
+
+		err := util.SaveConf(sqline.config)
+		if err != nil {
+			sqline.handleError(err)
+		}
+	}
+}
+
+func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
+	switch dbEntry.Driver {
+	case "sqlite3":
+		sqline.database = db.CreateSqlite()
+		sqline.database.Initialize(dbEntry.ConnStr)
+	case "postgres":
+		sqline.database = db.CreatePg()
+		sqline.database.Initialize(dbEntry.ConnStr)
+	case "mssql":
+
+	case "mysql":
+	}
+
+	showDB, showSchema := true, true
+	databases, err := sqline.database.GetDatabases()
+	if err != nil && errors.Is(db.ErrNotSupported, err) {
+		showDB = false
+	} else if err != nil {
+		sqline.handleError(err)
+		return
+	} else {
+		sqline.setDBInfo(databases)
+	}
+
+	schemas, err := sqline.database.GetSchemas()
+	if errors.Is(db.ErrNotSupported, err) {
+		showSchema = false
+	} else if err != nil {
+		sqline.handleError(err)
+		return
+	} else {
+		sqline.mainView.SetSchemaList(schemas)
+	}
+
+	tables, err := sqline.database.GetTables()
+	if err != nil {
+		sqline.handleError(err)
+		return
+	}
+
+	sqline.mainView.SetTableList(tables)
+
+	sqline.mainView.SetVisibleComponents(showDB, showSchema, sqline.screen)
+}
+
+func (sqline *Sqline) setDBInfo(dbInfo []db.DbInfo) {
+	sqline.mainView.SetDatabaseList(dbInfo)
+}
 
 func quit(screen tcell.Screen) {
 	maybePanic := recover()
@@ -37,102 +190,120 @@ func Run() {
 		panic(err)
 	}
 
+	maxX, maxY = screen.Size()
+	sqline := createSqline(maxX, maxY, screen)
+
 	screen.SetStyle(defStyle)
 	screen.EnablePaste()
 	screen.Clear()
 	defer quit(screen)
 
-	maxX, maxY = screen.Size()
-
-	var buf []byte
-	if len(os.Args) > 1 {
-		buf, err = os.ReadFile(os.Args[1])
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	if buf == nil {
-		buf = []byte{}
-	}
-
-	editor = texteditor.CreateEditor(Scale(0.15, maxX), 0, maxX, maxY, buf, &defStyle)
-
-	items := []components.ListItem{
-		{Label: []rune("Postgres"), Value: "postgres"},
-		{Label: []rune("Sqlite"), Value: "sqlite"},
-		{Label: []rune("MySql"), Value: "mysql"},
-		{Label: []rune("Sql Server"), Value: "mssql"},
-	}
-	list := components.CreateList(0, 0, Scale(0.15, maxX), Scale(0.2, maxY), items, &defStyle)
-
-	treeItems := []*components.TreeItem{
-		{Label: []rune("Poofter"), Value: "Poofter", Children: []*components.TreeItem{
-			{Label: []rune("SubPoofter"), Value: "Poofter", Children: []*components.TreeItem{
-				{Label}
-			}},
-		}},
-	}
-
-	tree := components.CreateTree(Scale(0.3, maxX), 0, Scale(0.7, maxX), maxY, treeItems, &defStyle)
-	tbox := components.CreateTextBox(20, 10, 50, &defStyle)
-
+	sync := false
 	var ev tcell.Event
-	edit := true
-	text := false
-	treefocus := false
-	listfocus := false
 	for {
+		prevState := sqline.state
 		ev = screen.PollEvent()
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
 			screen.Sync()
 			maxX, maxY = screen.Size()
 		case *tcell.EventKey:
-			switch ev.Key() {
-			case tcell.KeyCtrlC:
+			switch {
+			case ev.Key() == tcell.KeyCtrlC:
+				screen.Fini()
 				return
-			case tcell.KeyF5:
-				edit = true
-				text = false
-				treefocus = false
-				listfocus = false
-			case tcell.KeyF6:
-				text = true
-				edit = false
-				treefocus = false
-				listfocus = false
-			case tcell.KeyF7:
-				treefocus = true
-				edit = false
-				text = false
-				listfocus = false
-			case tcell.KeyF8:
-				listfocus = true
-				edit = false
-				text = false
-				treefocus = false
+			case ev.Key() == tcell.KeyEsc && sqline.mainView.EditorInNormalMode():
+				sqline.state = NormalMode
+				screen.Fill(' ', defStyle)
+				screen.Sync()
+				sqline.mainView.SetStatus([]rune("Normal"))
+			case ev.Key() == tcell.KeyEsc && !sqline.mainView.EditorInNormalMode():
+				sqline.mainView.HandleInput(ev)
+			case ev.Rune() == 'e' && sqline.state == NormalMode:
+				sqline.state = Editor
+				sqline.mainView.SetState(views.Editor)
+			case ev.Rune() == 't' && sqline.state == NormalMode:
+				sqline.state = MainView
+				sqline.mainView.SetState(views.TblList)
+			case ev.Rune() == 'd' && sqline.state == NormalMode:
+				sqline.state = MainView
+				sqline.mainView.SetState(views.DataTable)
+			case ev.Rune() == 's' && sqline.state == NormalMode:
+				sqline.state = MainView
+				sqline.mainView.SetState(views.SchemaList)
+			case ev.Rune() == 'D' && sqline.state == NormalMode:
+				sqline.state = MainView
+				sqline.mainView.SetState(views.DbList)
+			case ev.Rune() == 'A' && sqline.state == NormalMode:
+				sqline.state = NewConnView
+				sqline.mainView.SetStatus([]rune("NewConn"))
+			case ev.Rune() == 'C' && sqline.state == NormalMode:
+				sqline.state = OpenConnView
+				sqline.mainView.SetStatus([]rune("OpenConn"))
 			default:
-				if edit {
-					editor.HandleInput(ev)
-				} else {
-					tbox.HandleInput(ev)
-					tree.HandleInput(ev)
-					list.HandleInput(ev)
+				switch sqline.state {
+				case NewConnView:
+					sqline.newConnView.HandleInput(ev)
+				case OpenConnView:
+					sqline.openConnView.HandleInput(ev)
+				case Editor:
+					if ev.Rune() == '\t' {
+						sync = true
+					}
+					fallthrough
+				case MainView:
+					sqline.mainView.HandleInput(ev)
 				}
 			}
+
+			if prevState != sqline.state {
+				sqline.ResetViews()
+			}
 		}
-		screen.Fill(' ', defStyle)
-		screen.Sync()
-		list.Render(screen)
-		editor.Render(screen)
-		tbox.Render(screen)
-		//tree.Render(screen)
+
+		sqline.mainView.Render(screen)
+		switch sqline.state {
+		case NewConnView:
+			sqline.newConnView.Render(screen)
+		case OpenConnView:
+			sqline.openConnView.Render(screen)
+		}
+
+		if sync {
+			screen.Sync()
+		}
+
 		screen.Show()
 	}
 }
 
-func DrawConnectors(topX, topY, bottomX, bottomY int) {
-	screen.SetContent(topX, topY, tcell.RuneTTee, nil, defStyle)
-	screen.SetContent(bottomX, bottomY, tcell.RuneLTee, nil, defStyle)
+func (sqline *Sqline) ResetViews() {
+	sqline.newConnView.Reset()
+}
+
+func (sqline *Sqline) CalcPopupSize() {
+	if sqline.maxX < sqline.pWidth {
+		sqline.pWidth = sqline.maxX
+	}
+	if sqline.maxY < sqline.pHeight {
+		sqline.pHeight = sqline.maxY
+	}
+
+	if sqline.pWidth == sqline.maxX {
+		sqline.pLeft = 0
+		sqline.pRight = sqline.maxX
+	} else {
+		pad := (sqline.maxX - sqline.pWidth) / 2
+		sqline.pLeft = pad
+		sqline.pRight = pad + pWidth
+	}
+
+	if sqline.pHeight == sqline.maxY {
+		sqline.pTop = 0
+		sqline.pBottom = sqline.maxY
+	} else {
+		pad := (sqline.maxY - sqline.pHeight) / 2
+		sqline.pTop = pad
+		sqline.pBottom = pad + sqline.pHeight
+	}
 }

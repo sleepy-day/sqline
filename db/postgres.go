@@ -1,8 +1,9 @@
-package database
+package db
 
 import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/sleepy-day/sqline/components"
 )
 
 type Postgres struct {
@@ -62,10 +63,16 @@ func (psql *Postgres) GetSchemas() ([]SchemaInfo, error) {
 	return s, err
 }
 
-func (psql *Postgres) GetTables() ([]TableInfo, error) {
+func (psql *Postgres) GetTables() ([]Table, error) {
 	return nil, nil
 }
 
 func (psql *Postgres) GetRoles() ([]RoleInfo, error) {
 	return nil, nil
+}
+
+func (psql *Postgres) GetExecSQLFunc() components.ExecSQLFunc {
+	return func(statement []rune) {
+
+	}
 }

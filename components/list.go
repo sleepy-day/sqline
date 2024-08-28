@@ -4,23 +4,24 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-type ListItem struct {
+type ListItem[T any] struct {
 	Label []rune
-	Value string
+	Value T
 }
 
-type List struct {
+type List[T any] struct {
 	left, top     int
 	right, bottom int
-	listItems     []ListItem
 	selected      int
+	offset        int
 	style         *tcell.Style
 	hlStyle       tcell.Style
-	offset        int
+	listItems     []ListItem[T]
+	window        *Window
 }
 
-func CreateList(left, top, right, bottom int, listItems []ListItem, style *tcell.Style) *List {
-	list := &List{
+func CreateList[T any](left, top, right, bottom int, listItems []ListItem[T], title []rune, style *tcell.Style) *List[T] {
+	list := &List[T]{
 		left:      left,
 		top:       top,
 		right:     right,
@@ -28,6 +29,7 @@ func CreateList(left, top, right, bottom int, listItems []ListItem, style *tcell
 		listItems: listItems,
 		style:     style,
 		hlStyle:   tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite),
+		window:    CreateWindow(left, top, right, bottom, 0, 0, true, title, style),
 	}
 
 	if listItems == nil {
@@ -39,7 +41,11 @@ func CreateList(left, top, right, bottom int, listItems []ListItem, style *tcell
 	return list
 }
 
-func (list *List) SelectedItem() *ListItem {
+func (list *List[T]) SetList(items []ListItem[T]) {
+	list.listItems = items
+}
+
+func (list *List[T]) SelectedItem() *ListItem[T] {
 	if len(list.listItems) > 0 {
 		return &list.listItems[list.selected]
 	}
@@ -47,11 +53,19 @@ func (list *List) SelectedItem() *ListItem {
 	return nil
 }
 
-func (list *List) Add(item *ListItem) {
+func (list *List[T]) Resize(left, top, right, bottom int) {
+	list.left = left
+	list.top = top
+	list.right = right
+	list.bottom = bottom
+	list.window.Resize(left, top, right, bottom)
+}
+
+func (list *List[T]) Add(item *ListItem[T]) {
 	list.listItems = append(list.listItems, *item)
 }
 
-func (list *List) HandleInput(ev tcell.Event) {
+func (list *List[T]) HandleInput(ev tcell.Event) {
 	switch event := ev.(type) {
 	case *tcell.EventKey:
 		switch {
@@ -76,47 +90,53 @@ func (list *List) HandleInput(ev tcell.Event) {
 	}
 }
 
-func (list *List) Render(screen tcell.Screen) {
-	for i := range list.right - list.left {
-		if i == 0 {
-			screen.SetContent(list.left, list.top, tcell.RuneULCorner, nil, *list.style)
-			screen.SetContent(list.left, list.bottom, tcell.RuneLLCorner, nil, *list.style)
-			continue
+func (list *List[T]) Render(screen tcell.Screen) {
+	/*
+		for i := range list.right - list.left + 1 {
+			if i == 0 {
+				screen.SetContent(list.left, list.top, tcell.RuneULCorner, nil, *list.style)
+				screen.SetContent(list.left, list.bottom, tcell.RuneLLCorner, nil, *list.style)
+				continue
+			} else if i == list.right-list.left {
+				screen.SetContent(list.left+i, list.top, tcell.RuneURCorner, nil, *list.style)
+				screen.SetContent(list.left+i, list.bottom, tcell.RuneLRCorner, nil, *list.style)
+				continue
+			}
+
+			screen.SetContent(list.left+i, list.bottom, tcell.RuneHLine, nil, *list.style)
+			if i-1 < len(list.title) && i > 0 {
+				screen.SetContent(list.left+i, list.top, list.title[i-1], nil, *list.style)
+				continue
+			}
+			screen.SetContent(list.left+i, list.top, tcell.RuneHLine, nil, *list.style)
 		}
 
-		screen.SetContent(list.left+i, list.top, tcell.RuneHLine, nil, *list.style)
-		screen.SetContent(list.left+i, list.bottom, tcell.RuneHLine, nil, *list.style)
-	}
+		for i := range list.bottom - list.top {
+			if i == 0 || i == list.bottom-list.top {
+				continue
+			}
 
-	for i := range list.bottom - list.top {
-		if i == 0 || i == list.bottom-list.top {
-			continue
+			screen.SetContent(list.left, list.top+i, tcell.RuneVLine, nil, *list.style)
+			screen.SetContent(list.right, list.top+i, tcell.RuneVLine, nil, *list.style)
 		}
+	*/
 
-		screen.SetContent(list.left, list.top+i, tcell.RuneVLine, nil, *list.style)
-		screen.SetContent(list.right, list.top+i, tcell.RuneVLine, nil, *list.style)
-	}
+	list.window.Render(screen)
 
 	if len(list.listItems) == 0 {
 		return
 	}
 
+	style := list.style
 	for i, j := list.offset, 0; i < len(list.listItems) && i < list.offset+list.bottom-list.top-1; i, j = i+1, j+1 {
-		if len(list.listItems[i].Label) > 1 {
-			if list.selected == i {
-				screen.SetContent(list.left+1, list.top+j+1, list.listItems[i].Label[0], list.listItems[i].Label[1:], list.hlStyle)
-				continue
-			}
-
-			screen.SetContent(list.left+1, list.top+j+1, list.listItems[i].Label[0], list.listItems[i].Label[1:], *list.style)
-			continue
-		}
-
 		if list.selected == i {
-			screen.SetContent(list.left+1, list.top+j+1, list.listItems[i].Label[0], nil, list.hlStyle)
-			continue
+			style = &list.hlStyle
+		} else {
+			style = list.style
 		}
 
-		screen.SetContent(list.left+1, list.top+j+1, list.listItems[i].Label[0], nil, *list.style)
+		for k, ch := range list.listItems[i].Label {
+			screen.SetContent(list.left+k+1, list.top+j+1, ch, nil, *style)
+		}
 	}
 }
