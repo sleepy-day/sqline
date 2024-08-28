@@ -122,18 +122,24 @@ func (sqline *Sqline) createSaveFunc() views.SaveFunc {
 }
 
 func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
+	var err error
+	var database db.Database
 	switch dbEntry.Driver {
 	case "sqlite3":
-		sqline.database = db.CreateSqlite()
-		sqline.database.Initialize(dbEntry.ConnStr)
+		database, err = db.CreateSqlite(dbEntry.ConnStr, sqline.mainView.TableFunc())
 	case "postgres":
-		sqline.database = db.CreatePg()
-		sqline.database.Initialize(dbEntry.ConnStr)
+		database = db.CreatePg()
 	case "mssql":
 
 	case "mysql":
 	}
 
+	if err != nil {
+		sqline.handleError(err)
+		return
+	}
+
+	sqline.database = database
 	showDB, showSchema := true, true
 	databases, err := sqline.database.GetDatabases()
 	if err != nil && errors.Is(db.ErrNotSupported, err) {
@@ -161,8 +167,8 @@ func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
 		return
 	}
 
+	sqline.mainView.SetSQLFunc(sqline.database.GetExecSQLFunc())
 	sqline.mainView.SetTableList(tables)
-
 	sqline.mainView.SetVisibleComponents(showDB, showSchema, sqline.screen)
 }
 

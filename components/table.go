@@ -1,10 +1,10 @@
 package components
 
 import (
-	"strconv"
-
 	"github.com/gdamore/tcell/v2"
 )
+
+type TableDataFunc func([][][]rune, []rune)
 
 type Table struct {
 	expanded                 bool
@@ -21,6 +21,7 @@ type Table struct {
 	lastAnchorRow            int
 	colWidths                []int
 	data                     [][][]rune
+	resultMsg                []rune
 	prepared                 bool
 	popUpScroll              int
 	currentCell              []rune
@@ -422,28 +423,11 @@ func (t *Table) Render(screen tcell.Screen) {
 			}
 		}
 	}
+}
 
-	return
-
-	left := t.right - 8
-	anchorRow := []rune("AR:" + strconv.Itoa(t.anchorRow))
-	rowCount := []rune("MR:" + strconv.Itoa(t.rowCount))
-	anchorCol := []rune("AC:" + strconv.Itoa(t.anchorCol))
-	maxColRunes := []rune("MC:" + strconv.Itoa(t.lastAnchorCol))
-
-	var colRunes []rune
-	for _, v := range colLines {
-		colRunes = append(colRunes, []rune(strconv.Itoa(v)+" ")...)
+func (t *Table) TableFunc() TableDataFunc {
+	return func(table [][][]rune, resultMsg []rune) {
+		t.data = table
+		t.resultMsg = resultMsg
 	}
-
-	for i := left; i < t.right; i++ {
-		for j := t.top; i < t.top+8; i++ {
-			screen.SetContent(i, j, ' ', nil, *t.style)
-		}
-	}
-
-	screen.SetContent(left, t.top, anchorRow[0], anchorRow[1:], t.hlStyle)
-	screen.SetContent(left, t.top+1, rowCount[0], rowCount[1:], t.hlStyle)
-	screen.SetContent(left, t.top+2, anchorCol[0], anchorCol[1:], t.hlStyle)
-	screen.SetContent(left, t.top+3, maxColRunes[0], maxColRunes[1:], t.hlStyle)
 }

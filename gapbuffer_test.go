@@ -87,8 +87,8 @@ Here->`
 
 	gap, _ := util.CreateGapBuffer([]byte(text), 200)
 
-	gap.Insert('X', util.Position{Line: 0, Col: 14})
-	gap.Insert('X', util.Position{Line: 2, Col: 7})
+	gap.Insert('X', util.Pos{Line: 0, Col: 14})
+	gap.Insert('X', util.Pos{Line: 2, Col: 7})
 
 	lines := gap.GetLines(0, 100)
 
@@ -124,11 +124,77 @@ Testing Line Five
 	gap, _ := util.CreateGapBuffer([]byte(text), 200)
 
 	result, _ := gap.GetTextInRange(
-		util.Position{Line: 1, Col: 6},
-		util.Position{Line: 7, Col: 2},
+		util.Pos{Line: 1, Col: 6},
+		util.Pos{Line: 7, Col: 2},
 	)
 
 	if string(result) != expected {
 		t.Fatalf("error in GetTextInRange, expected %s got %s", expected, string(result))
 	}
+}
+
+func TestInsertIntoEmptyBuf(t *testing.T) {
+	gap, _ := util.CreateGapBuffer(nil, 200)
+
+	gap.ShiftGap(0)
+
+	gap.Insert('P', util.Pos{Line: 0, Col: 0})
+	gap.Insert('P', util.Pos{Line: 0, Col: 1})
+	gap.Insert('P', util.Pos{Line: 0, Col: 2})
+	gap.Insert('P', util.Pos{Line: 0, Col: 3})
+	gap.Insert('\n', util.Pos{Line: 0, Col: 4})
+
+	gap.Insert('R', util.Pos{Line: 1, Col: 0})
+	gap.Insert('R', util.Pos{Line: 1, Col: 1})
+	gap.Insert('R', util.Pos{Line: 1, Col: 2})
+	gap.Insert('R', util.Pos{Line: 1, Col: 3})
+	gap.Insert('\n', util.Pos{Line: 1, Col: 4})
+
+	lines := gap.GetLines(0, 2)
+
+	lineStr := ""
+	for _, v := range lines {
+		lineStr += string(v)
+	}
+
+	expect := `PPPP
+RRRR
+`
+
+	if lineStr != expect {
+		t.Fatalf("error in TestInsertIntoEmptyBuf: expected %s got %s", expect, lineStr)
+	}
+
+	gap, _ = util.CreateGapBuffer(nil, 200)
+
+	gap.ShiftGap(0)
+
+	gap.Insert('i', util.Pos{Line: 0, Col: 0})
+
+	gap.Insert('\n', util.Pos{Line: 0, Col: 1})
+
+	offset, _ := gap.FindOffset(util.Pos{Line: 0, Col: 2})
+	gap.ShiftGap(offset)
+
+	buf := gap.Buf()
+
+	str := ""
+	for _, v := range buf {
+		if v == '\n' {
+			str += "N"
+		} else if v <= 0 {
+			str += "X"
+		} else {
+			str += string(v)
+		}
+	}
+
+	lines = gap.GetLines(0, 3)
+
+	lineStr = ""
+	for _, v := range lines {
+		lineStr += string(v)
+	}
+
+	t.Fatalf("%s %d", str, len(lines))
 }

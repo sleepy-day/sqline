@@ -223,3 +223,11 @@ func (view *MainView) SetState(state MainViewState) {
 func (view *MainView) SetStatus(status []rune) {
 	view.status.SetStatus(status)
 }
+
+func (view *MainView) TableFunc() comp.TableDataFunc {
+	return view.dataTable.TableFunc()
+}
+
+func (view *MainView) SetSQLFunc(fn comp.ExecSQLFunc) {
+	view.editor.SetSQLFunc(fn)
+}

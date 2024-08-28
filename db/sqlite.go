@@ -1,6 +1,9 @@
 package db
 
 import (
+	"fmt"
+	"regexp"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/sleepy-day/sqline/components"
 )
@@ -10,6 +13,7 @@ type Sqlite struct {
 	connStr       string
 	driver        string
 	tableDataFunc func([][][]rune, []rune)
+	selectRegex   *regexp.Regexp
 }
 
 func CreateSqlite(connStr string, tableFunc func([][][]rune, []rune)) (*Sqlite, error) {
@@ -17,6 +21,7 @@ func CreateSqlite(connStr string, tableFunc func([][][]rune, []rune)) (*Sqlite, 
 		driver:        "sqlite3",
 		connStr:       connStr,
 		tableDataFunc: tableFunc,
+		selectRegex:   selectRegex(),
 	}
 
 	var err error
@@ -187,14 +192,42 @@ func (lite *Sqlite) Select(cmd string) ([][][]rune, error) {
 		return nil, err
 	}
 
-	headers, err := rows.Columns()
+	table, err := convertRowsToRuneArr(rows)
 	if err != nil {
 		return nil, err
 	}
+
+	return table, nil
+}
+
+func (lite *Sqlite) Exec(cmd string) ([]rune, error) {
+	result, err := lite.db.Exec(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	return []rune(fmt.Sprintf("%d rows affected", result.RowsAffected)), nil
 }
 
 func (lite *Sqlite) GetExecSQLFunc() components.ExecSQLFunc {
-	return func(cmd []rune) {
+	return func(cmd []rune) error {
+		if len(cmd) == 0 {
+			return nil
+		}
 
+		cmdStr := string(cmd)
+		var table [][][]rune = nil
+		var result []rune = nil
+
+		if lite.selectRegex.Match([]byte(cmdStr)) {
+			var err error
+			table, err = lite.Select(cmdStr)
+			if err != nil {
+				return err
+			}
+		}
+
+		lite.tableDataFunc(table, result)
+		return nil
 	}
 }

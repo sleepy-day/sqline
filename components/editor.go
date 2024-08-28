@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/sleepy-day/sqline/util"
 )
@@ -16,7 +18,7 @@ var (
 
 type editorMode byte
 
-type ExecSQLFunc func([]rune)
+type ExecSQLFunc func([]rune) error
 
 const (
 	normal editorMode = iota
@@ -122,7 +124,7 @@ InputSwitch:
 			case event.Key() == tcell.KeyRight:
 				edit.moveRight()
 			case event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModShift:
-
+				edit.execSQL()
 			case event.Key() == tcell.KeyEsc:
 				edit.mode = normal
 				edit.hlStartPos = -1
@@ -191,6 +193,28 @@ InputSwitch:
 	}
 }
 
+func (edit *Editor) execSQL() {
+	if edit.execSQLFunc == nil {
+		return
+	}
+
+	text, err := edit.gap.GetTextInRange(
+		util.Pos{Line: edit.hlStartLn, Col: edit.hlStartPos},
+		util.Pos{Line: edit.hlEndLn, Col: edit.hlEndLn},
+	)
+
+	if err != nil {
+		// TODO: get error handling func
+		return
+	}
+
+	err = edit.execSQLFunc(text)
+	if err != nil {
+		// here too
+		return
+	}
+}
+
 func (edit *Editor) insertChar(ch rune) {
 	if ch <= 0 {
 		return
@@ -199,7 +223,6 @@ func (edit *Editor) insertChar(ch rune) {
 	edit.insert(ch)
 	edit.curX++
 	edit.move(true)
-	edit.updateLines()
 }
 
 func (edit *Editor) highlight() {
@@ -214,7 +237,6 @@ func (edit *Editor) insertTab() {
 	edit.insert('\t')
 	edit.tabsBehind++
 	edit.curX++
-	edit.updateLines()
 	edit.move(true)
 }
 
@@ -231,7 +253,6 @@ func (edit *Editor) insertNewLine() {
 	edit.tabsBehind = 0
 
 	edit.move(true)
-	edit.updateLines()
 }
 
 func (edit *Editor) moveDown() {
@@ -258,6 +279,7 @@ func (edit *Editor) moveDown() {
 	}
 
 	edit.curX = edit.lineLengths[edit.curY]
+
 	edit.move(false)
 	edit.tabsBehind = edit.gap.TabsBehind()
 	edit.prevX = -1
@@ -303,7 +325,7 @@ func (edit *Editor) moveLeft() {
 
 	if edit.atStartOfLine() && edit.canMoveUp() {
 		edit.curY--
-		edit.curX = edit.lineLengths[edit.curY]
+		edit.curX = edit.lineLengths[edit.curY] - 1
 		edit.move(true)
 		edit.tabsBehind = edit.gap.TabsBehind()
 		return
@@ -313,7 +335,7 @@ func (edit *Editor) moveLeft() {
 		edit.lineOffset--
 		edit.updateLines()
 		edit.move(true)
-		edit.curX = edit.lineLengths[edit.curY]
+		edit.curX = edit.lineLengths[edit.curY] - 1
 		edit.tabsBehind = edit.gap.TabsBehind()
 		return
 	}
@@ -333,6 +355,8 @@ func (edit *Editor) moveRight() {
 
 	edit.prevX = -1
 
+	//	panic(fmt.Sprintf("end: %v move: %v scroll: %v", edit.atEndOfLine(), edit.canMoveDown(), edit.canScrollDown()))
+
 	if edit.atEndOfLine() && edit.canMoveDown() {
 		edit.curY++
 		edit.curX = 0
@@ -350,12 +374,15 @@ func (edit *Editor) moveRight() {
 		return
 	}
 
-	edit.curX++
-	edit.move(true)
+	if !edit.atEndOfLine() {
+		edit.curX++
+		edit.move(true)
 
-	if edit.gap.PeekBehind() == '\t' {
-		edit.tabsBehind++
+		if edit.gap.PeekBehind() == '\t' {
+			edit.tabsBehind++
+		}
 	}
+
 }
 
 func (edit *Editor) setCursorToPrevX() {
@@ -363,10 +390,15 @@ func (edit *Editor) setCursorToPrevX() {
 		return
 	}
 
+	lineLength := edit.lineLengths[edit.curY] - 1
+	if edit.onLastLine() {
+		lineLength++
+	}
+
 	if edit.prevX == -2 {
-		edit.curX = edit.lineLengths[edit.curY]
-	} else if edit.prevX >= 0 && edit.lineLengths[edit.curY] < edit.prevX {
-		edit.curX = edit.lineLengths[edit.curY]
+		edit.curX = lineLength
+	} else if edit.prevX >= 0 && lineLength < edit.prevX {
+		edit.curX = lineLength
 	} else {
 		edit.curX = edit.prevX
 	}
@@ -377,7 +409,11 @@ func (edit *Editor) atStartOfFile() bool {
 }
 
 func (edit *Editor) atEndOfFile() bool {
-	return edit.curX == edit.lineLengths[edit.curY] && edit.curY+edit.lineOffset == edit.gap.Lines()-1
+	if len(edit.lineLengths) == 0 {
+		return true
+	}
+
+	return edit.curX == edit.lineLengths[edit.curY]+1 && edit.curY+edit.lineOffset == edit.gap.Lines()
 }
 
 func (edit *Editor) atStartOfLine() bool {
@@ -385,11 +421,17 @@ func (edit *Editor) atStartOfLine() bool {
 }
 
 func (edit *Editor) atEndOfLine() bool {
-	return edit.curX == edit.lineLengths[edit.curY]
+	if len(edit.lineLengths) == 0 {
+		return true
+	} else if edit.curY == len(edit.lineLengths)-1 {
+		return edit.curX == edit.lineLengths[edit.curY]
+	}
+
+	return edit.curX == edit.lineLengths[edit.curY]-1
 }
 
 func (edit *Editor) canScrollDown() bool {
-	return edit.curY+edit.lineOffset < edit.gap.Lines()-1
+	return edit.curY+edit.lineOffset < edit.gap.Lines()
 }
 
 func (edit *Editor) canScrollUp() bool {
@@ -405,7 +447,7 @@ func (edit *Editor) canMoveUp() bool {
 }
 
 func (edit *Editor) canMoveDown() bool {
-	return edit.curY < edit.innerHeight && edit.curY < edit.gap.Lines()-1
+	return edit.curY < edit.innerHeight && edit.curY < len(edit.lineLengths)-1
 }
 
 func (edit *Editor) atEndOfView() bool {
@@ -413,29 +455,30 @@ func (edit *Editor) atEndOfView() bool {
 }
 
 func (edit *Editor) onLastLine() bool {
-	return edit.curY+edit.lineOffset == edit.gap.Lines()-1
+	if edit.gap.Lines() == 0 {
+		return true
+	}
+
+	return edit.curY+edit.lineOffset == edit.gap.Lines()
 }
 
 func (edit *Editor) updateLines() {
 	edit.lines = edit.gap.GetLines(edit.lineOffset, edit.lineOffset+edit.innerHeight)
 	edit.lineLengths = make([]int, len(edit.lines))
 	for i, j := edit.lineOffset, 0; i <= edit.lineOffset+edit.innerHeight && j < len(edit.lines); i, j = i+1, j+1 {
-		edit.lineLengths[j] = len(edit.lines[j]) - 1
+		edit.lineLengths[j] = len(edit.lines[j])
+
 	}
 
 	edit.refreshScreen = true
 }
 
 func (edit *Editor) move(refresh bool) {
-	offset, _ := edit.gap.FindOffset(util.Position{Line: edit.lineOffset + edit.curY, Col: edit.curX})
+	offset, _ := edit.gap.FindOffset(util.Pos{Line: edit.lineOffset + edit.curY, Col: edit.curX})
 	edit.gap.ShiftGap(offset)
 
 	if refresh {
 		edit.updateLines()
-	}
-
-	if edit.curX > edit.lineLengths[edit.curY] {
-		edit.curX = edit.lineLengths[edit.curY]
 	}
 }
 
@@ -455,10 +498,12 @@ func (edit *Editor) delete(backwards bool) {
 	}
 
 	calcTabs := false
+	prevLength := 0
 	if backwards && edit.gap.PeekBehind() == '\t' {
 		edit.tabsBehind--
 	} else if backwards && edit.gap.PeekBehind() == '\n' {
 		calcTabs = true
+		prevLength = edit.lineLengths[edit.curY-1] - 1
 	}
 
 	edit.gap.Delete(backwards)
@@ -466,11 +511,11 @@ func (edit *Editor) delete(backwards bool) {
 
 	switch {
 	case backwards && edit.atStartOfLine() && edit.canMoveUp():
-		edit.curX = edit.lineLengths[edit.curY]
 		edit.curY--
+		edit.curX = prevLength
 	case backwards && edit.atStartOfLine() && edit.canScrollUp():
-		edit.curX = edit.lineLengths[edit.curY]
 		edit.lineOffset--
+		edit.curX = prevLength
 	case backwards:
 		edit.curX--
 	}
@@ -483,7 +528,7 @@ func (edit *Editor) delete(backwards bool) {
 }
 
 func (edit *Editor) insert(ch rune) {
-	edit.gap.Insert(ch, util.Position{Line: edit.lineOffset + edit.curY, Col: edit.curX})
+	edit.gap.Insert(ch, util.Pos{Line: edit.lineOffset + edit.curY, Col: edit.curX})
 }
 
 func (edit *Editor) Render(screen tcell.Screen) {
@@ -566,6 +611,43 @@ func (edit *Editor) Render(screen tcell.Screen) {
 			screen.SetContent(edit.innerLeft+j, edit.innerTop+i, ch, nil, *style)
 		}
 	}
+
+	lineLength := []rune("lnlength: X")
+	if len(edit.lineLengths) > 0 {
+		lineLength = []rune(fmt.Sprintf("lnlength: %d", edit.lineLengths[edit.curY]))
+	}
+	lineCount := []rune(fmt.Sprintf("lncnt: %d", edit.gap.Lines()))
+	xPos := []rune(fmt.Sprintf("xPos: %d", edit.curX))
+	yPos := []rune(fmt.Sprintf("yPos: %d", edit.curY))
+	atEOL := []rune(fmt.Sprintf("atEOL: %v", edit.atEndOfLine()))
+	atSOL := []rune(fmt.Sprintf("atSOL: %v", edit.atStartOfLine()))
+	atEOF := []rune(fmt.Sprintf("atEOF: %v", edit.atEndOfFile()))
+	atSOF := []rune(fmt.Sprintf("atSOF: %v", edit.atStartOfFile()))
+	mvDown := []rune(fmt.Sprintf("canMvDown: %v", edit.canMoveDown()))
+	mvUp := []rune(fmt.Sprintf("canMvUp: %v", edit.canMoveUp()))
+	lastLn := []rune(fmt.Sprintf("lastLn: %v", edit.onLastLine()))
+
+	left := edit.innerRight - 15
+	top := edit.innerBottom - 11
+	screen.SetContent(left, top, lineCount[0], lineCount[1:], *edit.hlStyle)
+	screen.SetContent(left, top+1, xPos[0], xPos[1:], *edit.hlStyle)
+	screen.SetContent(left, top+2, yPos[0], yPos[1:], *edit.hlStyle)
+	screen.SetContent(left, top+3, lineLength[0], lineLength[1:], *edit.hlStyle)
+	screen.SetContent(left, top+4, atEOL[0], atEOL[1:], *edit.hlStyle)
+	screen.SetContent(left, top+5, atSOL[0], atSOL[1:], *edit.hlStyle)
+	screen.SetContent(left, top+6, atEOF[0], atEOF[1:], *edit.hlStyle)
+	screen.SetContent(left, top+7, atSOF[0], atSOF[1:], *edit.hlStyle)
+	screen.SetContent(left, top+8, mvDown[0], mvDown[1:], *edit.hlStyle)
+	screen.SetContent(left, top+9, mvUp[0], mvUp[1:], *edit.hlStyle)
+	screen.SetContent(left, top+10, lastLn[0], lastLn[1:], *edit.hlStyle)
+}
+
+func (edit *Editor) SetSQLFunc(fn ExecSQLFunc) {
+	edit.execSQLFunc = fn
+}
+
+func (edit *Editor) ClearSQLFunc() {
+	edit.execSQLFunc = nil
 }
 
 /*

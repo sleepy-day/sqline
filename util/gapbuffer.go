@@ -24,14 +24,14 @@ type GapBuffer struct {
 	lines    int
 }
 
-type Position struct {
+type Pos struct {
 	Line int
 	Col  int
 }
 
 type BufRange struct {
-	Start Position
-	End   Position
+	Start Pos
+	End   Pos
 }
 
 func CreateGapBuffer(text []byte, gapLength int) (*GapBuffer, error) {
@@ -64,7 +64,7 @@ func CreateGapBuffer(text []byte, gapLength int) (*GapBuffer, error) {
 	return gap, nil
 }
 
-func (gap *GapBuffer) Insert(ch rune, pos Position) error {
+func (gap *GapBuffer) Insert(ch rune, pos Pos) error {
 	if !utf8.ValidRune(ch) {
 		return ErrNonUTF8Text
 	}
@@ -92,6 +92,10 @@ func (gap *GapBuffer) Insert(ch rune, pos Position) error {
 	return nil
 }
 
+func (gap *GapBuffer) Start() int {
+	return gap.gapStart
+}
+
 func (gap *GapBuffer) ShiftGap(offset int) {
 	if gap.gapLen == 0 {
 		return
@@ -104,10 +108,7 @@ func (gap *GapBuffer) ShiftGap(offset int) {
 		}
 
 		gap.gapStart = offset
-		return
-	}
-
-	if offset > gap.gapStart {
+	} else if offset > gap.gapStart {
 		for i := gap.gapStart + gap.gapLen; i < offset; i++ {
 			gap.buf[i-gap.gapLen] = gap.buf[i]
 			gap.buf[i] = 0
@@ -115,6 +116,7 @@ func (gap *GapBuffer) ShiftGap(offset int) {
 
 		gap.gapStart = offset - gap.gapLen
 	}
+
 }
 
 func (gap *GapBuffer) Delete(backward bool) {
@@ -125,10 +127,17 @@ func (gap *GapBuffer) Delete(backward bool) {
 	}
 
 	if backward {
+		if gap.buf[gap.gapStart-1] == '\n' {
+			gap.lines--
+		}
 		gap.buf[gap.gapStart-1] = 0
 		gap.gapStart--
 		gap.gapLen++
 		return
+	}
+
+	if gap.buf[gap.gapStart+gap.gapLen] == '\n' {
+		gap.lines--
 	}
 
 	gap.buf[gap.gapStart+gap.gapLen] = 0
@@ -173,7 +182,7 @@ func (gap *GapBuffer) DeleteRange(rng BufRange) error {
 	return nil
 }
 
-func (gap *GapBuffer) FindOffset(pos Position) (int, error) {
+func (gap *GapBuffer) FindOffset(pos Pos) (int, error) {
 	startBuf := gap.buf[:gap.gapStart]
 	line := 0
 	col := 0
@@ -245,7 +254,7 @@ func (gap *GapBuffer) Lines() int {
 	return gap.lines
 }
 
-func (gap *GapBuffer) GetTextInRange(start, end Position) ([]rune, error) {
+func (gap *GapBuffer) GetTextInRange(start, end Pos) ([]rune, error) {
 	if start.Line > end.Line || (start.Line == end.Line && end.Col < start.Col) {
 		return nil, ErrInvalidRange
 	}
@@ -287,10 +296,16 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 
 	for i := 0; i < len(startBuf); i++ {
 		switch {
+		case i == len(startBuf)-1 && line >= start && line <= end && len(endBuf) == 0:
+			lines = append(lines, append([]rune(nil), startBuf[startPos:i+1]...))
+			if startBuf[i] == '\n' {
+				lines = append(lines, []rune{})
+			}
+
+			return lines
 		case i == len(startBuf)-1 && line >= start && line <= end:
 			if startBuf[i] == '\n' {
-				lines = append(lines, append([]rune(nil), startBuf[startPos:i+1]...))
-				line++
+				lines = append(lines, append([]rune(nil), startBuf[startPos:]...))
 			} else {
 				leftOverStartPos = startPos
 			}
@@ -298,6 +313,7 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 			if startBuf[i] == '\n' {
 				startPos = i + 1
 				line++
+				continue
 			}
 			continue
 		case line >= start && line <= end:
@@ -311,28 +327,33 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 		}
 	}
 
-	if len(endBuf) == 0 {
-		lines = append(lines, append([]rune(nil), startBuf[startPos:]...))
-		return lines
-	}
-
 	startPos = 0
 	for i := 0; i < len(endBuf); i++ {
 		switch {
 		case i == len(endBuf)-1 && line >= start && line <= end:
 			if leftOverStartPos != -1 {
 				tmp := append([]rune(nil), startBuf[leftOverStartPos:]...)
-				tmp = append(tmp, endBuf[:i+1]...)
+				tmp = append(tmp, endBuf[startPos:i+1]...)
 				lines = append(lines, tmp)
+
+				if endBuf[i] == '\n' {
+					lines = append(lines, []rune{})
+				}
 			} else {
 				lines = append(lines, append([]rune(nil), endBuf[startPos:i+1]...))
 			}
 		case line < start:
+			if start == 0 && end == 3 {
+				panic(2)
+			}
 			if endBuf[i] == '\n' {
 				startPos = i + 1
 				line++
 			}
 		case line >= start && line <= end:
+			if start == 0 && end == 3 {
+				panic(3)
+			}
 			if endBuf[i] == '\n' && leftOverStartPos != -1 {
 				tmp := append([]rune(nil), startBuf[leftOverStartPos:]...)
 				tmp = append(tmp, endBuf[:i+1]...)
@@ -347,6 +368,9 @@ func (gap *GapBuffer) GetLines(start, end int) [][]rune {
 				line++
 			}
 		case line > end:
+			if start == 0 && end == 3 {
+				panic(4)
+			}
 			return lines
 		}
 	}
@@ -375,4 +399,8 @@ func (gap *GapBuffer) TabsBehind() int {
 	}
 
 	return count
+}
+
+func (gap *GapBuffer) Buf() []rune {
+	return gap.buf
 }

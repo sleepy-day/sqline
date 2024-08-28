@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
+	"regexp"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -106,23 +107,10 @@ func TestConnection(driver, connStr string) error {
 	return err
 }
 
-func GetTestData() [][][]rune {
-	connStr := "host=localhost user=testuser password=test dbname=testdata sslmode=disable"
-
-	db, err := sqlx.Open("postgres", connStr)
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	rows, err := db.Query("SELECT * FROM Test;")
-	if err != nil {
-		panic(err)
-	}
-
+func convertRowsToRuneArr(rows *sql.Rows) ([][][]rune, error) {
 	headers, err := rows.Columns()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	table := [][][]rune{}
@@ -152,5 +140,10 @@ func GetTestData() [][][]rune {
 		table = append(table, rowRunes)
 	}
 
-	return table
+	return table, nil
+}
+
+func selectRegex() *regexp.Regexp {
+	regex, _ := regexp.Compile(`\sselect\s`)
+	return regex
 }
