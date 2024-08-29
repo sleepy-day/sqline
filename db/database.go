@@ -144,6 +144,6 @@ func convertRowsToRuneArr(rows *sql.Rows) ([][][]rune, error) {
 }
 
 func selectRegex() *regexp.Regexp {
-	regex, _ := regexp.Compile(`\sselect\s`)
+	regex := regexp.MustCompile(`(?i)^select\s`)
 	return regex
 }

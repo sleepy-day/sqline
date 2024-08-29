@@ -219,12 +219,11 @@ func (lite *Sqlite) GetExecSQLFunc() components.ExecSQLFunc {
 		var table [][][]rune = nil
 		var result []rune = nil
 
-		if lite.selectRegex.Match([]byte(cmdStr)) {
-			var err error
-			table, err = lite.Select(cmdStr)
-			if err != nil {
-				return err
-			}
+		var err error
+
+		table, err = lite.Select(cmdStr)
+		if err != nil {
+			return err
 		}
 
 		lite.tableDataFunc(table, result)

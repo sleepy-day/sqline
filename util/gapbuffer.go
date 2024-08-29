@@ -265,7 +265,7 @@ func (gap *GapBuffer) GetTextInRange(start, end Pos) ([]rune, error) {
 	}
 
 	if start.Line == end.Line {
-		return lines[0][start.Col : end.Col+1], nil
+		return lines[0][start.Col:end.Col], nil
 	}
 
 	lineCount := end.Line - start.Line + 1
@@ -275,7 +275,7 @@ func (gap *GapBuffer) GetTextInRange(start, end Pos) ([]rune, error) {
 		case i == 0:
 			text = append(text, v[start.Col:]...)
 		case i == lineCount:
-			text = append(text, v[:end.Col+1]...)
+			text = append(text, v[:end.Col]...)
 		default:
 			text = append(text, v...)
 		}

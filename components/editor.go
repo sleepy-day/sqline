@@ -57,7 +57,7 @@ func CreateEditor(left, top, right, bottom int, buf []byte, style, hlStyle *tcel
 		gap, _ = util.CreateGapBuffer(buf, 4000)
 	} else {
 		// TODO: Error handling
-		gap, _ = util.CreateGapBuffer(nil, 4000)
+		gap, _ = util.CreateGapBuffer([]byte("SELECT * FROM TestTable;"), 4000)
 	}
 
 	editor := &Editor{
@@ -123,7 +123,7 @@ InputSwitch:
 				edit.moveLeft()
 			case event.Key() == tcell.KeyRight:
 				edit.moveRight()
-			case event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModShift:
+			case event.Key() == tcell.KeyEnter:
 				edit.execSQL()
 			case event.Key() == tcell.KeyEsc:
 				edit.mode = normal
@@ -200,17 +200,19 @@ func (edit *Editor) execSQL() {
 
 	text, err := edit.gap.GetTextInRange(
 		util.Pos{Line: edit.hlStartLn, Col: edit.hlStartPos},
-		util.Pos{Line: edit.hlEndLn, Col: edit.hlEndLn},
+		util.Pos{Line: edit.hlEndLn, Col: edit.hlEndPos},
 	)
 
 	if err != nil {
 		// TODO: get error handling func
+		panic(err)
 		return
 	}
 
 	err = edit.execSQLFunc(text)
 	if err != nil {
 		// here too
+		panic(err)
 		return
 	}
 }
@@ -622,10 +624,10 @@ func (edit *Editor) Render(screen tcell.Screen) {
 	atEOL := []rune(fmt.Sprintf("atEOL: %v", edit.atEndOfLine()))
 	atSOL := []rune(fmt.Sprintf("atSOL: %v", edit.atStartOfLine()))
 	atEOF := []rune(fmt.Sprintf("atEOF: %v", edit.atEndOfFile()))
-	atSOF := []rune(fmt.Sprintf("atSOF: %v", edit.atStartOfFile()))
-	mvDown := []rune(fmt.Sprintf("canMvDown: %v", edit.canMoveDown()))
-	mvUp := []rune(fmt.Sprintf("canMvUp: %v", edit.canMoveUp()))
-	lastLn := []rune(fmt.Sprintf("lastLn: %v", edit.onLastLine()))
+	atSOF := []rune(fmt.Sprintf("hlStartLn: %v", edit.hlStartLn))
+	mvDown := []rune(fmt.Sprintf("hlStartPos: %v", edit.hlStartPos))
+	mvUp := []rune(fmt.Sprintf("hlEndLn: %v", edit.hlEndLn))
+	lastLn := []rune(fmt.Sprintf("hlEndPos: %v", edit.hlEndPos))
 
 	left := edit.innerRight - 15
 	top := edit.innerBottom - 11
