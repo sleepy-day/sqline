@@ -58,7 +58,12 @@ func LoadConf() (*SqlineConf, error) {
 
 	confFile, err := os.ReadFile(filepath.Join(confDir, "conf.toml"))
 	if err != nil {
-		return &SqlineConf{}, err
+		f, err := os.OpenFile(filepath.Join(confDir, "conf.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		if err != nil {
+			return &SqlineConf{}, err
+		}
+		f.Close()
+		return &SqlineConf{}, nil
 	}
 
 	var conf SqlineConf

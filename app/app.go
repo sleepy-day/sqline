@@ -22,7 +22,7 @@ const (
 	OpenConnView
 	Editor
 
-	NormalInfo    = "e - Editor | d - DataTable | D - Databases | s - Schemas | t - Tables | i - Indexes | A - Add | C - Connect | CTRL+C - Quit"
+	NormalInfo    = "e - Editor | d - DataTable | D - Databases | s - Schemas | t - Tables | i - Indexes | A - Add | C - Connect | Q - Quit"
 	EditorInfo    = "i - Insert Mode | v - Visual Mode | V - Visual Mode (Whole Line) | Esc - Normal Mode/Exit Editor Mode"
 	DataTableInfo = "Arrow Keys - Select Row/Col | Enter - Expand Cell | Esc - Normal Mode/Exit Expanded Cell"
 	ListInfo      = "Up/Down - Select Item | Esc - Normal Mode"
@@ -129,6 +129,14 @@ func (sqline *Sqline) createSaveFunc() views.SaveFunc {
 		err := util.SaveConf(sqline.config)
 		if err != nil {
 			sqline.handleError(err)
+		}
+
+		conf, err := util.LoadConf()
+		if err != nil {
+			sqline.handleError(err)
+		} else {
+			sqline.config.SavedConns = conf.SavedConns
+			sqline.openConnView.SetConns(conf.SavedConns)
 		}
 
 		sqline.state = NormalMode
@@ -259,7 +267,7 @@ func Run() {
 			maxX, maxY = screen.Size()
 		case *tcell.EventKey:
 			switch {
-			case ev.Key() == tcell.KeyCtrlC:
+			case ev.Key() == tcell.KeyCtrlC || ev.Rune() == 'Q':
 				screen.Fini()
 				return
 			case ev.Key() == tcell.KeyEsc && sqline.mainView.EditorInNormalMode():

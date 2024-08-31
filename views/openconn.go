@@ -44,6 +44,20 @@ func CreateOpenConnView(left, top, right, bottom int, style, hlStyle *tcell.Styl
 	return ocView
 }
 
+func (ocv *OpenConnView) SetConns(conns []util.DBEntry) {
+	var items []comp.ListItem[util.DBEntry]
+	for _, v := range conns {
+		entry := comp.ListItem[util.DBEntry]{
+			Label: []rune(v.Name),
+			Value: v,
+		}
+
+		items = append(items, entry)
+	}
+
+	ocv.connList.SetList(items)
+}
+
 func (ocv *OpenConnView) Render(screen tcell.Screen) {
 	ocv.connList.Render(screen)
 }
