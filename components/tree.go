@@ -43,6 +43,7 @@ func CreateTree(left, top, right, bottom int, treeItems []*TreeItem, label []run
 		treeItems: treeItems,
 		style:     style,
 		hlStyle:   tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite),
+		selected:  -1,
 	}
 
 	if treeItems == nil {

@@ -64,7 +64,7 @@ func CreateNewConnView(left, top, right, bottom int, style, hlStyle *tcell.Style
 		selected: driverRadio,
 	}
 
-	ncView.window = comp.CreateWindow(left, top, right, bottom, 2, 2, true, []rune("Add New Connection"), style)
+	ncView.window = comp.CreateWindow(left, top, right, bottom, 2, 2, true, true, []rune("Add New Connection"), style)
 
 	// TODO: Error handling for there being enough space in the window
 	inpLeft, inpTop, inpRight, inpBottom := ncView.window.RequestRows(4)

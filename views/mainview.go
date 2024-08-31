@@ -47,7 +47,7 @@ type MainView struct {
 	State                     MainViewState
 }
 
-func CreateMainView(left, top, right, bottom int, showDB, showSchema bool, buf []byte, style, hlStyle *tcell.Style) *MainView {
+func CreateMainView(left, top, right, bottom, pLeft, pTop, pRight, pBottom int, showDB, showSchema bool, buf []byte, style, hlStyle *tcell.Style) *MainView {
 	view := &MainView{
 		left:           left,
 		top:            top,
@@ -89,7 +89,7 @@ func CreateMainView(left, top, right, bottom int, showDB, showSchema bool, buf [
 
 	tableHeight := 16
 	view.editor = comp.CreateEditor(mainSideStart, view.top, view.right, viewBottom-tableHeight, nil, style, hlStyle)
-	view.dataTable = comp.CreateTable(mainSideStart, view.bottom-tableHeight, view.right, viewBottom, 30, nil, style)
+	view.dataTable = comp.CreateTable(mainSideStart, view.bottom-tableHeight, view.right, viewBottom, pLeft, pTop, pRight, pBottom, 30, nil, style)
 	view.status = comp.CreateStatusBar(view.left, view.bottom, view.right, 5, []rune("NoMode"), style, &NoModeStatusStyle)
 
 	return view
@@ -228,7 +228,6 @@ func (view *MainView) SetTableTree(tables []db.Table) {
 func (view *MainView) Render(screen tcell.Screen) {
 	view.editor.Render(screen)
 	view.tableTree.Render(screen)
-	view.dataTable.Render(screen)
 	view.indexTree.Render(screen)
 
 	if view.showDB {
@@ -238,6 +237,7 @@ func (view *MainView) Render(screen tcell.Screen) {
 		view.schemaList.Render(screen)
 	}
 
+	view.dataTable.Render(screen)
 	view.status.Render(screen)
 }
 

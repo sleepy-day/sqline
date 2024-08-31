@@ -7,39 +7,43 @@ import (
 type TableDataFunc func([][][]rune, []rune)
 
 type Table struct {
-	expanded                 bool
-	window, popUpWindow      *Window
-	style                    *tcell.Style
-	hlStyle                  tcell.Style
-	oddRowStyle              tcell.Style
-	evenRowStyle             tcell.Style
-	left, top, right, bottom int
-	maxWidth                 int
-	rowCount                 int
-	sCol, sRow               int
-	anchorCol                int
-	lastAnchorCol            int
-	anchorRow                int
-	lastAnchorRow            int
-	colWidths                []int
-	data                     [][][]rune
-	resultMsg                []rune
-	prepared                 bool
-	popUpScroll              int
-	currentCell              []rune
-	popUpWidth               int
-	scroll                   bool
-	refresh                  bool
+	window, popUpWindow *Window
+	style               *tcell.Style
+	hlStyle             tcell.Style
+	oddRowStyle         tcell.Style
+	evenRowStyle        tcell.Style
+
+	left, top, right, bottom     int
+	pLeft, pTop, pRight, pBottom int
+	popUpScroll                  int
+	popUpWidth                   int
+	maxWidth                     int
+	tableHeight                  int
+
+	sCol, sRow    int
+	anchorCol     int
+	lastAnchorCol int
+	anchorRow     int
+	colWidths     []int
+	currentCell   []rune
+
+	expanded bool
+	prepared bool
+	scroll   bool
+	refresh  bool
+
+	data      [][][]rune
+	resultMsg []rune
 }
 
-func CreateTable(left, top, right, bottom, maxWidth int, data [][][]rune, style *tcell.Style) *Table {
+func CreateTable(left, top, right, bottom, pLeft, pTop, pRight, pBottom, maxWidth int, data [][][]rune, style *tcell.Style) *Table {
 	t := &Table{
 		left:         left,
 		top:          top,
 		right:        right,
 		bottom:       bottom,
 		maxWidth:     maxWidth,
-		rowCount:     (bottom - top - 2) / 2,
+		tableHeight:  bottom - top - 1,
 		expanded:     false,
 		sCol:         -1,
 		sRow:         -1,
@@ -48,7 +52,8 @@ func CreateTable(left, top, right, bottom, maxWidth int, data [][][]rune, style 
 		oddRowStyle:  tcell.StyleDefault.Background(tcell.ColorGray).Foreground(tcell.ColorWhite),
 		evenRowStyle: tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorWhite),
 		hlStyle:      tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite),
-		window:       CreateWindow(left, top, right, bottom, 0, 0, true, nil, style),
+		window:       CreateWindow(left, top, right, bottom, 0, 0, true, true, nil, style),
+		popUpWindow:  CreateWindow(pLeft, pTop, pRight, pBottom, 0, 0, true, true, nil, style),
 	}
 
 	if len(data) > 0 && len(data[0]) > 0 {
@@ -79,12 +84,7 @@ func CreateTable(left, top, right, bottom, maxWidth int, data [][][]rune, style 
 		}
 	}
 
-	t.popUpWindow = CreateWindow(t.left, t.top, t.right, t.bottom, 0, 0, true, nil, style)
 	t.popUpWidth = t.popUpWindow.GetUsableWidth()
-
-	if bottom-top%2 != 0 {
-		t.rowCount++
-	}
 
 	return t
 }
@@ -132,12 +132,13 @@ EventLoop:
 				break
 			}
 
-			if t.sRow >= len(t.data)-1 || t.expanded {
+			if t.sRow+t.anchorRow >= len(t.data)-1 || t.expanded {
 				break EventLoop
 			}
 
-			t.sRow++
-			if t.sRow >= t.anchorRow+t.rowCount {
+			if t.sRow < t.tableHeight-1 {
+				t.sRow++
+			} else if t.sRow == t.tableHeight-1 && t.sRow+t.anchorRow < len(t.data) {
 				t.anchorRow++
 			}
 		case event.Key() == tcell.KeyLeft:
@@ -163,7 +164,7 @@ EventLoop:
 				t.anchorCol++
 			}
 		case event.Key() == tcell.KeyEnter:
-			t.currentCell = t.data[t.sRow][t.sCol]
+			t.currentCell = t.data[t.sRow+t.anchorRow][t.sCol]
 			t.popUpScroll = 0
 			t.expanded = true
 		case event.Key() == tcell.KeyEsc:
@@ -176,14 +177,6 @@ func (t *Table) Render(screen tcell.Screen) {
 	t.window.Render(screen)
 	if len(t.data) == 0 {
 		return
-	}
-
-	if t.refresh {
-		for i := range t.right - t.left - 1 {
-			for j := range t.bottom - t.top - 2 {
-				screen.SetContent(t.left+i+1, t.top+j+1, ' ', nil, *t.style)
-			}
-		}
 	}
 
 	lastAnchorCol, width, finalCol := 0, 0, false
@@ -205,18 +198,14 @@ func (t *Table) Render(screen tcell.Screen) {
 		}
 	}
 
-	visibleRows := t.data
-	if len(visibleRows) > (t.bottom - t.top) {
-		visibleRows = t.data[t.anchorRow:(t.bottom - t.top)]
-	}
-
+	visibleRows := t.data[t.anchorRow:]
 	for i := t.anchorCol + colAdjust; i < t.anchorCol+cols && i < len(t.data[0]) && !finalCol; i++ {
 		rowLeft := t.left + width + padOffset + 1
 		if i == t.anchorCol+colAdjust {
 			rowLeft++
 		}
 
-		for j := 0; j < len(visibleRows); j++ {
+		for j := 0; j < len(visibleRows) && j < t.tableHeight; j++ {
 			style := t.evenRowStyle
 			if j == t.sRow && i == t.sCol {
 				style = t.hlStyle
@@ -224,8 +213,8 @@ func (t *Table) Render(screen tcell.Screen) {
 				style = t.oddRowStyle
 			}
 
-			for u, ch := range t.data[j][i] {
-				if rowLeft+u < t.left+1 {
+			for u, ch := range visibleRows[j][i] {
+				if rowLeft+u < t.left {
 					continue
 				}
 
@@ -241,8 +230,14 @@ func (t *Table) Render(screen tcell.Screen) {
 				}
 			}
 
-			cellLen := len(t.data[j][i])
+			cellLen := len(visibleRows[j][i])
 			for k := range t.colWidths[i] - cellLen {
+				if rowLeft+cellLen+k < t.left {
+					continue
+				} else if rowLeft+cellLen+k >= t.right {
+					break
+				}
+
 				screen.SetContent(rowLeft+cellLen+k, t.top+j+1, ' ', nil, style)
 			}
 		}
@@ -264,7 +259,7 @@ func (t *Table) Render(screen tcell.Screen) {
 		width := right - left
 		height := bottom - top - 1
 
-		cell := t.data[t.sRow][t.sCol]
+		cell := t.data[t.sRow+t.anchorRow][t.sCol]
 		x, y := left, top
 
 		maxChars := width * height
@@ -329,7 +324,7 @@ func (t *Table) lastColVisible() bool {
 }
 
 func (t *Table) lastRowVisible() bool {
-	return t.anchorRow+((t.bottom-t.top)/2) >= len(t.data)
+	return t.anchorRow+t.bottom-t.top >= len(t.data)
 }
 
 func (t *Table) TableFunc() TableDataFunc {
@@ -378,5 +373,7 @@ func (t *Table) TableFunc() TableDataFunc {
 		t.refresh = true
 		t.sCol = -1
 		t.sRow = -1
+		t.anchorRow = 0
+		t.anchorCol = 0
 	}
 }

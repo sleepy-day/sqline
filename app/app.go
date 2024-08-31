@@ -76,7 +76,7 @@ func createSqline(maxX, maxY int, screen tcell.Screen) *Sqline {
 	}
 
 	sqline.config = conf
-	sqline.mainView = views.CreateMainView(0, 0, maxX, maxY, true, true, buf, &defStyle, &hlStyle)
+	sqline.mainView = views.CreateMainView(0, 0, maxX, maxY, sqline.pLeft, sqline.pTop, sqline.pRight, sqline.pBottom, true, true, buf, &defStyle, &hlStyle)
 	sqline.newConnView = views.CreateNewConnView(sqline.pLeft, sqline.pTop, sqline.pRight, sqline.pBottom, &defStyle, &hlStyle, sqline.createTestFunc(), sqline.createSaveFunc())
 	sqline.openConnView = views.CreateOpenConnView(sqline.pLeft, sqline.pTop, sqline.pRight, sqline.pBottom, &defStyle, &hlStyle, sqline.config.SavedConns, sqline.createSelectFunc())
 

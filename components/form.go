@@ -7,16 +7,19 @@ type WindowInputPos struct {
 }
 
 type Window struct {
+	title []rune
+	style *tcell.Style
+
 	left, top, right, bottom   int
 	height, width              int
-	style                      *tcell.Style
 	usedRows                   int
 	horizontalPad, verticalPad int
-	border                     bool
-	title                      []rune
+
+	border  bool
+	clearBg bool
 }
 
-func CreateWindow(left, top, right, bottom, horizontalPad, verticalPad int, border bool, title []rune, style *tcell.Style) *Window {
+func CreateWindow(left, top, right, bottom, horizontalPad, verticalPad int, border, clearBg bool, title []rune, style *tcell.Style) *Window {
 	return &Window{
 		left:          left,
 		top:           top,
@@ -30,6 +33,7 @@ func CreateWindow(left, top, right, bottom, horizontalPad, verticalPad int, bord
 		usedRows:      0,
 		border:        border,
 		title:         title,
+		clearBg:       clearBg,
 	}
 }
 
@@ -81,6 +85,14 @@ func (window *Window) GetUsableDimensions() (left, top, right, bottom int) {
 }
 
 func (window *Window) Render(screen tcell.Screen) {
+	if window.clearBg {
+		for row := range window.width {
+			for col := range window.height {
+				screen.SetContent(window.left+row, window.top+col, ' ', nil, *window.style)
+			}
+		}
+	}
+
 	if !window.border {
 		return
 	}
