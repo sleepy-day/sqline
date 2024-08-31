@@ -61,7 +61,7 @@ func (tbox *TextBox) HandleInput(ev *tcell.EventKey) {
 			tbox.buf = append(tbox.buf[:tbox.offset+tbox.cursorPos-2], tbox.buf[tbox.offset+tbox.cursorPos-1:]...)
 		}
 
-		if tbox.offset == 0 {
+		if tbox.offset > 0 {
 			tbox.offset--
 		} else {
 			tbox.cursorPos--
@@ -72,7 +72,7 @@ func (tbox *TextBox) HandleInput(ev *tcell.EventKey) {
 			break
 		}
 
-		if reachedEnd || reachedStart && bufEmpty {
+		if reachedEnd || (reachedStart && bufEmpty) {
 			tbox.buf = append(tbox.buf, ch)
 			tbox.cursorPos++
 			break
@@ -113,13 +113,11 @@ func (tbox *TextBox) Render(screen tcell.Screen) {
 			screen.SetContent(tbox.left+i, tbox.top+2, tcell.RuneVLine, nil, *tbox.style)
 			screen.SetContent(tbox.left+i, tbox.top+3, tcell.RuneLRCorner, nil, *tbox.style)
 			continue
-		} else if i == 1 {
-			for j, ch := range tbox.buf {
-				screen.SetContent(tbox.left+i+j, tbox.top+2, ch, nil, *tbox.style)
-			}
 		}
 
-		if i >= len(tbox.buf) {
+		if i+1 < len(tbox.buf)+2 {
+			screen.SetContent(tbox.left+i, tbox.top+2, tbox.buf[i-1], nil, *tbox.style)
+		} else {
 			screen.SetContent(tbox.left+i, tbox.top+2, ' ', nil, *tbox.style)
 		}
 

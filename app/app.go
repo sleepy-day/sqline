@@ -112,7 +112,9 @@ func (sqline *Sqline) createTestFunc() views.TestFunc {
 func (sqline *Sqline) createSelectFunc() views.SelectFunc {
 	return func(dbEntry util.DBEntry) {
 		sqline.setDB(dbEntry)
+		screen.Fill(' ', defStyle)
 		sqline.state = NormalMode
+		sqline.mainView.SetStatus("Normal")
 	}
 }
 
@@ -130,6 +132,8 @@ func (sqline *Sqline) createSaveFunc() views.SaveFunc {
 		}
 
 		sqline.state = NormalMode
+		sqline.mainView.SetStatus("Normal")
+		screen.Fill(' ', defStyle)
 		sqline.mainView.SetInfo([]rune("Connection Saved!"))
 	}
 }
