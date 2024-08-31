@@ -53,6 +53,7 @@ func (sb *StatusBar) Render(screen tcell.Screen) {
 	}
 }
 
-func (sb *StatusBar) SetStatus(status []rune) {
+func (sb *StatusBar) SetStatus(status []rune, style tcell.Style) {
+	sb.statusStyle = &style
 	sb.status = status
 }

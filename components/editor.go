@@ -1,8 +1,6 @@
 package components
 
 import (
-	"fmt"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/sleepy-day/sqline/util"
 )
@@ -49,6 +47,7 @@ type Editor struct {
 	style, hlStyle *tcell.Style
 	execSQLFunc    ExecSQLFunc
 	mode           editorMode
+	hlLine         bool
 }
 
 func CreateEditor(left, top, right, bottom int, buf []byte, style, hlStyle *tcell.Style) *Editor {
@@ -57,7 +56,7 @@ func CreateEditor(left, top, right, bottom int, buf []byte, style, hlStyle *tcel
 		gap, _ = util.CreateGapBuffer(buf, 4000)
 	} else {
 		// TODO: Error handling
-		gap, _ = util.CreateGapBuffer([]byte("SELECT * FROM TestTable;"), 4000)
+		gap, _ = util.CreateGapBuffer(nil, 4000)
 	}
 
 	editor := &Editor{
@@ -109,8 +108,34 @@ func (edit *Editor) InNormalMode() bool {
 	return edit.mode == normal
 }
 
+func (edit *Editor) getLineLength() int {
+	if len(edit.lineLengths) == 0 {
+		return 0
+	}
+
+	if edit.curY == len(edit.lineLengths)-1 {
+		return edit.lineLengths[edit.curY]
+	}
+
+	return edit.lineLengths[edit.curY] - 1
+}
+
+func (edit *Editor) moveToLineEnd() {
+	if len(edit.lineLengths) == 0 {
+		return
+	}
+
+	edit.curX = edit.getLineLength()
+	edit.prevX = -1
+	edit.move(false)
+}
+
+func (edit *Editor) moveToLineStart() {
+	edit.curX = 0
+	edit.prevX = -1
+}
+
 func (edit *Editor) HandleInput(ev tcell.Event) {
-InputSwitch:
 	switch event := ev.(type) {
 	case *tcell.EventKey:
 		if edit.mode == visual {
@@ -125,18 +150,25 @@ InputSwitch:
 				edit.moveRight()
 			case event.Key() == tcell.KeyEnter:
 				edit.execSQL()
+			case event.Key() == tcell.KeyHome:
+				edit.moveToLineStart()
+			case event.Key() == tcell.KeyEnd:
+				edit.moveToLineEnd()
 			case event.Key() == tcell.KeyEsc:
 				edit.mode = normal
+				edit.hlLine = false
 				edit.hlStartPos = -1
 				edit.hlEndPos = -1
 				edit.hlStartLn = -1
 				edit.hlEndLn = -1
 
-				break InputSwitch
+				return
 			}
 
-			edit.hlEndPos = edit.curX
 			edit.hlEndLn = edit.curY + edit.lineOffset
+			if !edit.hlLine {
+				edit.hlEndPos = edit.curX
+			}
 		}
 
 		if edit.mode == normal {
@@ -149,16 +181,28 @@ InputSwitch:
 				edit.moveLeft()
 			case event.Key() == tcell.KeyRight:
 				edit.moveRight()
+			case event.Key() == tcell.KeyHome:
+				edit.moveToLineStart()
+			case event.Key() == tcell.KeyEnd:
+				edit.moveToLineEnd()
 			case event.Rune() == 'i':
 				edit.mode = insert
-				break InputSwitch
 			case event.Rune() == 'V' && edit.mode == normal:
+				edit.mode = visual
+				edit.hlLine = true
+				edit.hlStartPos = 0
+				edit.hlEndPos = edit.getLineLength()
+				edit.hlStartLn = edit.curY + edit.lineOffset
+				edit.hlEndLn = edit.curY + edit.lineOffset
+			case event.Rune() == 'v' && edit.mode == normal:
 				edit.mode = visual
 				edit.hlStartPos = edit.curX
 				edit.hlStartLn = edit.curY + edit.lineOffset
 				edit.hlEndPos = edit.curX
 				edit.hlEndLn = edit.curY + edit.lineOffset
 			}
+
+			return
 		}
 
 		if edit.mode == insert {
@@ -175,6 +219,10 @@ InputSwitch:
 				edit.insertNewLine()
 			case event.Key() == tcell.KeyTab:
 				edit.insertTab()
+			case event.Key() == tcell.KeyHome:
+				edit.moveToLineStart()
+			case event.Key() == tcell.KeyEnd:
+				edit.moveToLineEnd()
 			case event.Key() == tcell.KeyBackspace2 || event.Key() == tcell.KeyBackspace:
 				if !edit.atStartOfFile() {
 					edit.delete(true)
@@ -185,10 +233,11 @@ InputSwitch:
 				}
 			case event.Key() == tcell.KeyEsc:
 				edit.mode = normal
-				break InputSwitch
 			default:
 				edit.insertChar(event.Rune())
 			}
+
+			return
 		}
 	}
 }
@@ -198,21 +247,43 @@ func (edit *Editor) execSQL() {
 		return
 	}
 
+	stLn, stPos := edit.hlStartLn, edit.hlStartPos
+	enLn, enPos := edit.hlEndLn, edit.hlEndPos
+	if edit.hlLine {
+		stPos = 0
+		enPos = 999999
+		if stLn > enLn {
+			stLn = enLn
+			enLn = edit.hlStartLn
+		}
+	} else if stLn == enLn && stPos > enPos {
+		stPos = enPos
+		enPos = edit.hlStartPos
+	} else if stLn > enLn {
+		stLn = enLn
+		enLn = edit.hlStartLn
+		stPos = enPos
+		enPos = edit.hlStartPos - 1
+
+		if enPos == 0 && enLn > 0 {
+			enPos = edit.getLineLength()
+			enLn--
+		}
+	}
+
 	text, err := edit.gap.GetTextInRange(
-		util.Pos{Line: edit.hlStartLn, Col: edit.hlStartPos},
-		util.Pos{Line: edit.hlEndLn, Col: edit.hlEndPos},
+		util.Pos{Line: stLn, Col: stPos},
+		util.Pos{Line: enLn, Col: enPos},
 	)
 
 	if err != nil {
 		// TODO: get error handling func
-		panic(err)
 		return
 	}
 
 	err = edit.execSQLFunc(text)
 	if err != nil {
 		// here too
-		panic(err)
 		return
 	}
 }
@@ -568,21 +639,18 @@ func (edit *Editor) Render(screen tcell.Screen) {
 		screen.SetContent(edit.right, edit.top+i, tcell.RuneVLine, nil, *edit.style)
 	}
 
-	for i, v := range edit.lines {
+	for row, v := range edit.lines {
 		spaces := 0
 
-		for j, ch := range v {
-			style := edit.style
-
-			col := j
-			line := i + edit.lineOffset
+		for col, ch := range v {
+			line := row + edit.lineOffset
 
 			startLn := edit.hlStartLn
 			startPos := edit.hlStartPos
 			endLn := edit.hlEndLn
 			endPos := edit.hlEndPos
 
-			if startLn > endLn || (startLn == endLn && startPos > endPos) {
+			if !edit.hlLine && startLn > endLn || (startLn == endLn && startPos > endPos) {
 				startLn = endLn
 				startPos = endPos
 
@@ -594,10 +662,15 @@ func (edit *Editor) Render(screen tcell.Screen) {
 				}
 			}
 
+			style := edit.style
 			switch {
+			case edit.hlLine && line >= endLn && line <= startLn:
+				fallthrough
+			case edit.hlLine && line <= endLn && line >= startLn:
+				fallthrough
 			case line == startLn && line == endLn && col >= startPos && col <= endPos:
 				fallthrough
-			case line == startLn && col >= startPos:
+			case line == startLn && col >= startPos && startLn < endLn:
 				fallthrough
 			case line > startLn && line < endLn:
 				fallthrough
@@ -606,42 +679,13 @@ func (edit *Editor) Render(screen tcell.Screen) {
 			}
 
 			if ch == '\t' {
-				screen.SetContent(edit.innerLeft+j, edit.innerTop+i, tabs[0], tabs[1:], *style)
+				screen.SetContent(edit.innerLeft+col, edit.innerTop+row, tabs[0], tabs[1:], *style)
 				spaces += tabWidth
 				continue
 			}
-			screen.SetContent(edit.innerLeft+j, edit.innerTop+i, ch, nil, *style)
+			screen.SetContent(edit.innerLeft+col, edit.innerTop+row, ch, nil, *style)
 		}
 	}
-
-	lineLength := []rune("lnlength: X")
-	if len(edit.lineLengths) > 0 {
-		lineLength = []rune(fmt.Sprintf("lnlength: %d", edit.lineLengths[edit.curY]))
-	}
-	lineCount := []rune(fmt.Sprintf("lncnt: %d", edit.gap.Lines()))
-	xPos := []rune(fmt.Sprintf("xPos: %d", edit.curX))
-	yPos := []rune(fmt.Sprintf("yPos: %d", edit.curY))
-	atEOL := []rune(fmt.Sprintf("atEOL: %v", edit.atEndOfLine()))
-	atSOL := []rune(fmt.Sprintf("atSOL: %v", edit.atStartOfLine()))
-	atEOF := []rune(fmt.Sprintf("atEOF: %v", edit.atEndOfFile()))
-	atSOF := []rune(fmt.Sprintf("hlStartLn: %v", edit.hlStartLn))
-	mvDown := []rune(fmt.Sprintf("hlStartPos: %v", edit.hlStartPos))
-	mvUp := []rune(fmt.Sprintf("hlEndLn: %v", edit.hlEndLn))
-	lastLn := []rune(fmt.Sprintf("hlEndPos: %v", edit.hlEndPos))
-
-	left := edit.innerRight - 15
-	top := edit.innerBottom - 11
-	screen.SetContent(left, top, lineCount[0], lineCount[1:], *edit.hlStyle)
-	screen.SetContent(left, top+1, xPos[0], xPos[1:], *edit.hlStyle)
-	screen.SetContent(left, top+2, yPos[0], yPos[1:], *edit.hlStyle)
-	screen.SetContent(left, top+3, lineLength[0], lineLength[1:], *edit.hlStyle)
-	screen.SetContent(left, top+4, atEOL[0], atEOL[1:], *edit.hlStyle)
-	screen.SetContent(left, top+5, atSOL[0], atSOL[1:], *edit.hlStyle)
-	screen.SetContent(left, top+6, atEOF[0], atEOF[1:], *edit.hlStyle)
-	screen.SetContent(left, top+7, atSOF[0], atSOF[1:], *edit.hlStyle)
-	screen.SetContent(left, top+8, mvDown[0], mvDown[1:], *edit.hlStyle)
-	screen.SetContent(left, top+9, mvUp[0], mvUp[1:], *edit.hlStyle)
-	screen.SetContent(left, top+10, lastLn[0], lastLn[1:], *edit.hlStyle)
 }
 
 func (edit *Editor) SetSQLFunc(fn ExecSQLFunc) {
@@ -651,59 +695,3 @@ func (edit *Editor) SetSQLFunc(fn ExecSQLFunc) {
 func (edit *Editor) ClearSQLFunc() {
 	edit.execSQLFunc = nil
 }
-
-/*
-func updateBufferDisplay() {
-screen.Fill(' ', defStyle)
-screen.Sync()
-for i, v := range lines {
-for j, ch := range v {
-if ch == '\n' {
-screen.SetContent(j, i, '$', nil, defStyle)
-} else {
-screen.SetContent(j, i, ch, nil, defStyle)
-}
-}
-//		if len(v) > 1 {
-//			screen.SetContent(0, i, v[0], v[1:], defStyle)
-//		} else {
-//			screen.SetContent(0, i, v[0], nil, defStyle)
-//		}
-}
-}
-func debugInfo() {
-	chars := gap.Chars()
-	gapStart, gapEnd := gap.GapStartAndEnd()
-	lastMove := gap.LastMove()
-	prevX := gap.PrevX()
-	gap.CalcPrevLineStart()
-	gap.CalcNextLineStart()
-	prevLine, nextLine, followingLine, linePos := gap.LinePositions()
-
-	debugX := maxX - 50
-	debugY := maxY - 6
-
-	prvXRunes := []rune(fmt.Sprintf("prvx: %03d", prevX))
-	lnPosRunes := []rune(fmt.Sprintf("lnp: %03d", linePos))
-	prvRunes := []rune(fmt.Sprintf("prv: %03d", prevLine))
-	nxtRunes := []rune(fmt.Sprintf("nxt: %03d", nextLine))
-	flwRunes := []rune(fmt.Sprintf("flw: %03d", followingLine))
-	lmRunes := []rune(fmt.Sprintf("lm: %03d", lastMove))
-	crRunes := append([]rune("cr:"), gap.NewLineBehindCursor(), ' ', ' ', ' ')
-	chRunes := []rune(fmt.Sprintf("ch: %03d", chars))
-	stRunes := []rune(fmt.Sprintf("st: %03d", gapStart))
-	enRunes := []rune(fmt.Sprintf("en: %03d", gapEnd))
-
-	screen.SetContent(debugX, debugY, lmRunes[0], lmRunes[1:], defStyle)
-	screen.SetContent(debugX, debugY+1, crRunes[0], crRunes[1:], defStyle)
-	screen.SetContent(debugX, debugY+2, chRunes[0], chRunes[1:], defStyle)
-	screen.SetContent(debugX, debugY+3, stRunes[0], stRunes[1:], defStyle)
-	screen.SetContent(debugX, debugY+4, enRunes[0], enRunes[1:], defStyle)
-	screen.SetContent(debugX, debugY+5, prvRunes[0], prvRunes[1:], defStyle)
-	screen.SetContent(debugX+10, debugY+5, nxtRunes[0], nxtRunes[1:], defStyle)
-	screen.SetContent(debugX+20, debugY+5, flwRunes[0], flwRunes[1:], defStyle)
-	screen.SetContent(debugX+30, debugY+5, lnPosRunes[0], lnPosRunes[1:], defStyle)
-	screen.SetContent(debugX+38, debugY+5, prvXRunes[0], prvXRunes[1:], defStyle)
-}
-
-*/

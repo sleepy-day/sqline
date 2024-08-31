@@ -11,6 +11,8 @@ type Table struct {
 	window, popUpWindow      *Window
 	style                    *tcell.Style
 	hlStyle                  tcell.Style
+	oddRowStyle              tcell.Style
+	evenRowStyle             tcell.Style
 	left, top, right, bottom int
 	maxWidth                 int
 	rowCount                 int
@@ -32,19 +34,21 @@ type Table struct {
 
 func CreateTable(left, top, right, bottom, maxWidth int, data [][][]rune, style *tcell.Style) *Table {
 	t := &Table{
-		left:      left,
-		top:       top,
-		right:     right,
-		bottom:    bottom,
-		maxWidth:  maxWidth,
-		rowCount:  (bottom - top - 2) / 2,
-		expanded:  false,
-		sCol:      0,
-		sRow:      0,
-		anchorCol: 0,
-		style:     style,
-		hlStyle:   tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite),
-		window:    CreateWindow(left, top, right, bottom, 0, 0, true, nil, style),
+		left:         left,
+		top:          top,
+		right:        right,
+		bottom:       bottom,
+		maxWidth:     maxWidth,
+		rowCount:     (bottom - top - 2) / 2,
+		expanded:     false,
+		sCol:         -1,
+		sRow:         -1,
+		anchorCol:    0,
+		style:        style,
+		oddRowStyle:  tcell.StyleDefault.Background(tcell.ColorGray).Foreground(tcell.ColorWhite),
+		evenRowStyle: tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorWhite),
+		hlStyle:      tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite),
+		window:       CreateWindow(left, top, right, bottom, 0, 0, true, nil, style),
 	}
 
 	if len(data) > 0 && len(data[0]) > 0 {
@@ -88,6 +92,13 @@ func CreateTable(left, top, right, bottom, maxWidth int, data [][][]rune, style 
 func (t *Table) HandleInput(ev tcell.Event) {
 	if len(t.data) == 0 {
 		return
+	}
+
+	if t.sRow == -1 {
+		t.sRow = 0
+	}
+	if t.sCol == -1 {
+		t.sCol = 0
 	}
 
 EventLoop:
@@ -168,7 +179,7 @@ func (t *Table) Render(screen tcell.Screen) {
 	}
 
 	if t.refresh {
-		for i := range t.right - t.left - 2 {
+		for i := range t.right - t.left - 1 {
 			for j := range t.bottom - t.top - 2 {
 				screen.SetContent(t.left+i+1, t.top+j+1, ' ', nil, *t.style)
 			}
@@ -195,33 +206,44 @@ func (t *Table) Render(screen tcell.Screen) {
 	}
 
 	visibleRows := t.data
-	if len(visibleRows) > (t.bottom-t.top)/2 {
-		visibleRows = t.data[t.anchorRow : (t.bottom-t.top)/2]
+	if len(visibleRows) > (t.bottom - t.top) {
+		visibleRows = t.data[t.anchorRow:(t.bottom - t.top)]
 	}
 
 	for i := t.anchorCol + colAdjust; i < t.anchorCol+cols && i < len(t.data[0]) && !finalCol; i++ {
-
 		rowLeft := t.left + width + padOffset + 1
 		if i == t.anchorCol+colAdjust {
 			rowLeft++
 		}
 
 		for j := 0; j < len(visibleRows); j++ {
+			style := t.evenRowStyle
+			if j == t.sRow && i == t.sCol {
+				style = t.hlStyle
+			} else if (j+t.anchorRow)%2 == 1 {
+				style = t.oddRowStyle
+			}
+
 			for u, ch := range t.data[j][i] {
+				if rowLeft+u < t.left+1 {
+					continue
+				}
+
 				if rowLeft+u == t.right {
 					finalCol = true
 					break
 				}
 
 				if u <= t.maxWidth {
-					if j == t.sRow && i == t.sCol {
-						screen.SetContent(rowLeft+u, t.top+(j*2)+1, ch, nil, t.hlStyle)
-					} else {
-						screen.SetContent(rowLeft+u, t.top+(j*2)+1, ch, nil, *t.style)
-					}
+					screen.SetContent(rowLeft+u, t.top+j+1, ch, nil, style)
 				} else {
 					break
 				}
+			}
+
+			cellLen := len(t.data[j][i])
+			for k := range t.colWidths[i] - cellLen {
+				screen.SetContent(rowLeft+cellLen+k, t.top+j+1, ' ', nil, style)
 			}
 		}
 
@@ -234,155 +256,6 @@ func (t *Table) Render(screen tcell.Screen) {
 
 	if t.lastAnchorCol == 0 {
 		t.lastAnchorCol = lastAnchorCol
-	}
-
-	// TODO: clean up this mess
-	rangeLen := len(colSepLines[t.anchorCol:t.lastAnchorCol])
-	borderWidth := 0
-	currentSeps := colSepLines[t.anchorCol : cols+t.anchorCol]
-	for lnNo, w := range currentSeps {
-		for j := range w {
-			borderLeft := t.left + padOffset + borderWidth + j
-			last := j == w-1
-			lnNoAtStart := lnNo == 0
-			lastLnNo := lnNo == rangeLen-1
-			endOfRange := j == t.right-t.left-2
-
-			tableHeight := 2 + len(currentSeps)*2
-			for i := range tableHeight {
-				even := i%2 == 0
-
-				if last && even && t.lastColSelected() && lastLnNo && t.lastColVisible() && !t.colAnchoredFirst() {
-					switch {
-					case i == 0:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneURCorner, nil, *t.style)
-					case i == tableHeight-1:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLRCorner, nil, *t.style)
-					}
-
-					continue
-				}
-
-				if last && even && i == 0 {
-					switch {
-					case t.rowAnchoredFirst() && !lastLnNo:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneTTee, nil, *t.style)
-					case t.rowAnchoredFirst() && lastLnNo && i < t.right:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneTTee, nil, *t.style)
-					case t.rowAnchoredFirst() && lastLnNo:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneURCorner, nil, *t.style)
-					case t.lastColVisible() && lastLnNo:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneRTee, nil, *t.style)
-					default:
-						screen.SetContent(borderLeft, t.top+i, tcell.RunePlus, nil, *t.style)
-					}
-
-					continue
-				}
-
-				if last && even && t.lastRowVisible() && i == tableHeight-1 {
-					if t.lastColVisible() && lastLnNo {
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLRCorner, nil, *t.style)
-					} else {
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneBTee, nil, *t.style)
-					}
-
-					continue
-				}
-
-				if last && even && i == tableHeight-1 {
-					switch {
-					case !t.lastRowVisible() && t.lastColVisible() && lastLnNo:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneRTee, nil, *t.style)
-					case !t.lastRowVisible():
-						screen.SetContent(borderLeft, t.top+i, tcell.RunePlus, nil, *t.style)
-					default:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneBTee, nil, *t.style)
-					}
-
-					continue
-				}
-
-				if last && even {
-					switch {
-					case lnNo < rangeLen-1:
-						screen.SetContent(borderLeft, t.top+i, tcell.RunePlus, nil, *t.style)
-					case t.colAnchoredFirst() && t.lastColVisible():
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneRTee, nil, *t.style)
-					default:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLTee, nil, *t.style)
-					}
-
-					continue
-				}
-
-				if last && borderLeft < t.right {
-					screen.SetContent(borderLeft, t.top+i, tcell.RuneVLine, nil, *t.style)
-					continue
-				}
-
-				if t.lastColVisible() && endOfRange && even {
-					switch {
-					case i == 0:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneURCorner, nil, *t.style)
-					case i == tableHeight-1:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLRCorner, nil, *t.style)
-					default:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneRTee, nil, *t.style)
-					}
-					continue
-				} else if t.lastColVisible() && endOfRange {
-					screen.SetContent(borderLeft, t.top+i, tcell.RuneVLine, nil, *t.style)
-					continue
-				}
-
-				if even && lnNoAtStart && j == 0 && i == 0 {
-					switch {
-					case t.colAnchoredFirst() && t.rowAnchoredFirst():
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneULCorner, nil, *t.style)
-					case t.rowAnchoredFirst() && !t.colAnchoredFirst():
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneTTee, nil, *t.style)
-					case !t.colAnchoredFirst() && !t.rowAnchoredFirst():
-						screen.SetContent(borderLeft, t.top+i, tcell.RunePlus, nil, *t.style)
-					case t.colAnchoredFirst() && !t.rowAnchoredFirst():
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLTee, nil, *t.style)
-					case !t.colAnchoredFirst():
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneTTee, nil, *t.style)
-					}
-					continue
-				}
-
-				if even && lnNoAtStart && j == 0 {
-					switch {
-					case i == tableHeight-1 && !t.colAnchoredFirst() && !t.lastRowVisible():
-						screen.SetContent(borderLeft, t.top+i, tcell.RunePlus, nil, *t.style)
-					case i == tableHeight-1 && t.colAnchoredFirst() && !t.lastRowVisible():
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLTee, nil, *t.style)
-					case i == tableHeight-1 && t.lastRowVisible() && !t.colAnchoredFirst():
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneBTee, nil, *t.style)
-					case i == tableHeight-1 && i < t.bottom:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLTee, nil, *t.style)
-					case i == tableHeight-1:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLLCorner, nil, *t.style)
-					case t.anchorCol == 0:
-						screen.SetContent(borderLeft, t.top+i, tcell.RuneLTee, nil, *t.style)
-					default:
-						screen.SetContent(borderLeft, t.top+i, tcell.RunePlus, nil, *t.style)
-					}
-					continue
-				}
-
-				if lnNo == 0 && j == 0 {
-					continue
-				}
-
-				if even && borderLeft < t.right {
-					screen.SetContent(borderLeft, t.top+i, tcell.RuneHLine, nil, *t.style)
-				}
-			}
-		}
-
-		borderWidth += w
 	}
 
 	if t.expanded {
@@ -461,11 +334,19 @@ func (t *Table) lastRowVisible() bool {
 
 func (t *Table) TableFunc() TableDataFunc {
 	return func(table [][][]rune, resultMsg []rune) {
-		if table == nil {
-			panic("nil table")
-		} else if len(table) == 0 {
-			panic("0 len table")
+		if table == nil && resultMsg == nil {
+			return
 		}
+
+		if resultMsg != nil && table == nil {
+			table = [][][]rune{
+				[][]rune{
+					[]rune("Results"),
+					resultMsg,
+				},
+			}
+		}
+
 		t.data = table
 		t.resultMsg = resultMsg
 
@@ -495,5 +376,7 @@ func (t *Table) TableFunc() TableDataFunc {
 		}
 
 		t.refresh = true
+		t.sCol = -1
+		t.sRow = -1
 	}
 }

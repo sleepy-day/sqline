@@ -13,7 +13,6 @@ type OpenConnView struct {
 	left, top, right, bottom int
 	height, width            int
 	style, hlStyle           *tcell.Style
-	window                   *comp.Window
 	connList                 *comp.List[util.DBEntry]
 	infoBtn                  *comp.Button
 	selectFunc               func(util.DBEntry)
@@ -32,8 +31,6 @@ func CreateOpenConnView(left, top, right, bottom int, style, hlStyle *tcell.Styl
 		selectFunc: selectFunc,
 	}
 
-	ocView.window = comp.CreateWindow(left, top, right, bottom, 2, 2, true, []rune("Open A Saved Connection"), style)
-
 	var conns []comp.ListItem[util.DBEntry]
 	for _, v := range dbEntries {
 		conns = append(conns, comp.ListItem[util.DBEntry]{
@@ -42,14 +39,12 @@ func CreateOpenConnView(left, top, right, bottom int, style, hlStyle *tcell.Styl
 		})
 	}
 
-	innLeft, innTop, innRight, innBottom := ocView.window.GetUsableDimensions()
-	ocView.connList = comp.CreateList(innLeft, innTop-5, innRight, innBottom, conns, nil, style)
+	ocView.connList = comp.CreateList(left, top, right, bottom, conns, []rune("Open a saved connection"), style)
 
 	return ocView
 }
 
 func (ocv *OpenConnView) Render(screen tcell.Screen) {
-	ocv.window.Render(screen)
 	ocv.connList.Render(screen)
 }
 

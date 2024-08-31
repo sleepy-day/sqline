@@ -21,6 +21,7 @@ type TreeItem struct {
 type Tree struct {
 	left, top     int
 	right, bottom int
+	width, height int
 	label         []rune
 	selected      int
 	offset        int
@@ -36,6 +37,8 @@ func CreateTree(left, top, right, bottom int, treeItems []*TreeItem, label []run
 		top:       top,
 		right:     right,
 		bottom:    bottom,
+		width:     right - left,
+		height:    bottom - top,
 		label:     label,
 		treeItems: treeItems,
 		style:     style,
@@ -56,6 +59,8 @@ func (tree *Tree) Resize(left, top, right, bottom int) {
 	tree.top = top
 	tree.right = right
 	tree.bottom = bottom
+	tree.width = right - left
+	tree.height = bottom - top
 }
 
 func (tree *Tree) SetItems(items []*TreeItem) {
@@ -196,6 +201,9 @@ func (tree *Tree) Render(screen tcell.Screen) {
 		}
 
 		for k, ch := range label {
+			if k == tree.width-1 {
+				break
+			}
 			screen.SetContent(tree.left+offset+k+1, tree.top+j+1, ch, nil, *style)
 		}
 	}

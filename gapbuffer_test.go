@@ -131,6 +131,19 @@ Testing Line Five
 	if string(result) != expected {
 		t.Fatalf("error in GetTextInRange, expected %s got %s", expected, string(result))
 	}
+
+	text = `SELECT * FROM TestTable;`
+
+	gap, _ = util.CreateGapBuffer([]byte(text), 200)
+
+	result, _ = gap.GetTextInRange(
+		util.Pos{Line: 0, Col: 0},
+		util.Pos{Line: 0, Col: 24},
+	)
+
+	if string(result) != text {
+		t.Fatalf("error in GetTextInRange, expected %s got %s", text, string(result))
+	}
 }
 
 func TestInsertIntoEmptyBuf(t *testing.T) {
@@ -164,37 +177,4 @@ RRRR
 	if lineStr != expect {
 		t.Fatalf("error in TestInsertIntoEmptyBuf: expected %s got %s", expect, lineStr)
 	}
-
-	gap, _ = util.CreateGapBuffer(nil, 200)
-
-	gap.ShiftGap(0)
-
-	gap.Insert('i', util.Pos{Line: 0, Col: 0})
-
-	gap.Insert('\n', util.Pos{Line: 0, Col: 1})
-
-	offset, _ := gap.FindOffset(util.Pos{Line: 0, Col: 2})
-	gap.ShiftGap(offset)
-
-	buf := gap.Buf()
-
-	str := ""
-	for _, v := range buf {
-		if v == '\n' {
-			str += "N"
-		} else if v <= 0 {
-			str += "X"
-		} else {
-			str += string(v)
-		}
-	}
-
-	lines = gap.GetLines(0, 3)
-
-	lineStr = ""
-	for _, v := range lines {
-		lineStr += string(v)
-	}
-
-	t.Fatalf("%s %d", str, len(lines))
 }

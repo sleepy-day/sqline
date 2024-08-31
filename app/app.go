@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	defStyle   tcell.Style = tcell.StyleDefault.Background(tcell.ColorReset).Foreground(tcell.ColorReset)
+	defStyle   tcell.Style = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorWhite)
 	hlStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite)
 	maxX, maxY int
 
@@ -168,7 +168,8 @@ func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
 	}
 
 	sqline.mainView.SetSQLFunc(sqline.database.GetExecSQLFunc())
-	sqline.mainView.SetTableList(tables)
+	sqline.mainView.SetTableTree(tables)
+	sqline.mainView.SetIndexTree(tables)
 	sqline.mainView.SetVisibleComponents(showDB, showSchema, sqline.screen)
 }
 

@@ -124,7 +124,7 @@ func convertRowsToRuneArr(rows *sql.Rows) ([][][]rune, error) {
 	for rows.Next() {
 		row := make([]interface{}, len(headers))
 		for i := range headers {
-			row[i] = new(sql.RawBytes)
+			row[i] = new(sql.Null[sql.RawBytes])
 		}
 
 		err := rows.Scan(row...)
@@ -134,7 +134,12 @@ func convertRowsToRuneArr(rows *sql.Rows) ([][][]rune, error) {
 
 		rowRunes := [][]rune{}
 		for _, cell := range row {
-			rowRunes = append(rowRunes, []rune(string(*cell.(*sql.RawBytes))))
+			if cell.(*sql.Null[sql.RawBytes]).Valid {
+				value, _ := cell.(*sql.Null[sql.RawBytes]).Value()
+				rowRunes = append(rowRunes, []rune(string(value.(sql.RawBytes))))
+			} else {
+				rowRunes = append(rowRunes, []rune("NULL"))
+			}
 		}
 
 		table = append(table, rowRunes)

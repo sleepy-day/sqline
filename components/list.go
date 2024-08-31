@@ -123,11 +123,17 @@ func (list *List[T]) Render(screen tcell.Screen) {
 
 	list.window.Render(screen)
 
+	style := list.style
+	for row := range list.bottom - list.top - 1 {
+		for col := range list.right - list.left - 1 {
+			screen.SetContent(list.left+col+1, list.top+row+1, ' ', nil, *style)
+		}
+	}
+
 	if len(list.listItems) == 0 {
 		return
 	}
 
-	style := list.style
 	for i, j := list.offset, 0; i < len(list.listItems) && i < list.offset+list.bottom-list.top-1; i, j = i+1, j+1 {
 		if list.selected == i {
 			style = &list.hlStyle

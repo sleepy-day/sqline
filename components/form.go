@@ -81,7 +81,6 @@ func (window *Window) GetUsableDimensions() (left, top, right, bottom int) {
 }
 
 func (window *Window) Render(screen tcell.Screen) {
-
 	if !window.border {
 		return
 	}

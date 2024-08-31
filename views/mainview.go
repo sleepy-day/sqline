@@ -20,16 +20,28 @@ const (
 	DataTable
 )
 
+var (
+	NoModeStatusStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorWhite)
+	EditorStatusStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorWhite)
+	DatabaseStatusStyle  tcell.Style = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+	SchemaStatusStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+	IndexStatusStyle     tcell.Style = tcell.StyleDefault.Background(tcell.ColorPurple).Foreground(tcell.ColorWhite)
+	TableStatusStyle     tcell.Style = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite)
+	DataTableStatusStyle tcell.Style = tcell.StyleDefault.Background(tcell.ColorOrange).Foreground(tcell.ColorWhite)
+)
+
 type MainView struct {
 	showDB, showSchema        bool
 	left, top, right, bottom  int
 	height, width             int
 	sideListHeight, sideWidth int
+	sideBoxHeight             int
 	style, hlStyle            *tcell.Style
 	editor                    *comp.Editor
 	dbList                    *comp.List[db.DbInfo]
 	schemaList                *comp.List[db.SchemaInfo]
-	tblList                   *comp.Tree
+	indexTree                 *comp.Tree
+	tableTree                 *comp.Tree
 	dataTable                 *comp.Table
 	status                    *comp.StatusBar
 	State                     MainViewState
@@ -48,36 +60,37 @@ func CreateMainView(left, top, right, bottom int, showDB, showSchema bool, buf [
 		showDB:         showDB,
 		showSchema:     showSchema,
 		State:          NoFocus,
-		sideWidth:      30,
+		sideWidth:      40,
 		sideListHeight: Scale(0.2, bottom-1),
+		sideBoxHeight:  Scale(0.2, bottom-1),
 	}
 
-	sideBarWidth := 30
-	mainSideStart := sideBarWidth + 1
-	dbSchemaHeight := Scale(0.2, view.bottom)
+	mainSideStart := view.sideWidth + 1
 	viewBottom := view.bottom - 1
 
 	if showDB && showSchema {
-		view.dbList = comp.CreateList[db.DbInfo](view.left, view.top, sideBarWidth, dbSchemaHeight, nil, []rune("Databases"), style)
-		view.schemaList = comp.CreateList[db.SchemaInfo](view.left, dbSchemaHeight+1, sideBarWidth, dbSchemaHeight*2, nil, []rune("Schemas"), style)
+		view.dbList = comp.CreateList[db.DbInfo](view.left, view.top, view.sideWidth, view.sideBoxHeight, nil, []rune("Databases"), style)
+		view.schemaList = comp.CreateList[db.SchemaInfo](view.left, view.sideBoxHeight+1, view.sideWidth, view.sideBoxHeight*2, nil, []rune("Schemas"), style)
 	} else if showDB {
-		view.dbList = comp.CreateList[db.DbInfo](view.left, view.top, sideBarWidth, dbSchemaHeight, nil, []rune("Databases"), style)
+		view.dbList = comp.CreateList[db.DbInfo](view.left, view.top, view.sideWidth, view.sideBoxHeight, nil, []rune("Databases"), style)
 	} else if showSchema {
-		view.schemaList = comp.CreateList[db.SchemaInfo](view.left, view.top, sideBarWidth, dbSchemaHeight, nil, []rune("Schemas"), style)
+		view.schemaList = comp.CreateList[db.SchemaInfo](view.left, view.top, view.sideWidth, view.sideBoxHeight, nil, []rune("Schemas"), style)
 	}
 
 	if showDB && showSchema {
-		view.tblList = comp.CreateTree(view.left, (dbSchemaHeight*2)+1, sideBarWidth, viewBottom, nil, []rune("Tables"), style)
+		view.tableTree = comp.CreateTree(view.left, (view.sideBoxHeight*2)+1, view.sideWidth, viewBottom-view.sideBoxHeight, nil, []rune("Tables"), style)
 	} else if showDB || showSchema {
-		view.tblList = comp.CreateTree(view.left, dbSchemaHeight+1, sideBarWidth, viewBottom, nil, []rune("Tables"), style)
+		view.tableTree = comp.CreateTree(view.left, view.sideBoxHeight+1, view.sideWidth, viewBottom-view.sideBoxHeight, nil, []rune("Tables"), style)
 	} else {
-		view.tblList = comp.CreateTree(view.left, view.top, sideBarWidth, viewBottom, nil, []rune("Tables"), style)
+		view.tableTree = comp.CreateTree(view.left, view.top, view.sideWidth, viewBottom-view.sideBoxHeight, nil, []rune("Tables"), style)
 	}
+
+	view.indexTree = comp.CreateTree(view.left, viewBottom-view.sideBoxHeight+1, view.sideWidth, viewBottom, nil, []rune("Indexes"), style)
 
 	tableHeight := 16
 	view.editor = comp.CreateEditor(mainSideStart, view.top, view.right, viewBottom-tableHeight, nil, style, hlStyle)
 	view.dataTable = comp.CreateTable(mainSideStart, view.bottom-tableHeight, view.right, viewBottom, 30, nil, style)
-	view.status = comp.CreateStatusBar(view.left, view.bottom, view.right, 5, []rune("NoMode"), style, hlStyle)
+	view.status = comp.CreateStatusBar(view.left, view.bottom, view.right, 5, []rune("NoMode"), style, &NoModeStatusStyle)
 
 	return view
 }
@@ -90,15 +103,19 @@ func (view *MainView) SetVisibleComponents(showDB, showSchema bool, screen tcell
 	if view.showDB && view.showSchema {
 		view.dbList.Resize(view.left, view.top, view.sideWidth, view.sideListHeight)
 		view.schemaList.Resize(view.left, view.sideListHeight+1, view.sideListHeight, (view.sideListHeight*2)+1)
-		view.tblList.Resize(view.left, (view.sideListHeight*2)+1, view.sideWidth, bottom)
+		view.tableTree.Resize(view.left, (view.sideListHeight*2)+1, view.sideWidth, bottom-view.sideListHeight)
+		view.indexTree.Resize(view.left, bottom-view.sideListHeight+1, view.sideWidth, bottom)
 	} else if view.showDB {
 		view.dbList.Resize(view.left, view.top, view.sideWidth, view.sideListHeight)
-		view.tblList.Resize(view.left, view.sideListHeight+1, view.sideWidth, bottom)
+		view.tableTree.Resize(view.left, view.sideListHeight+1, view.sideWidth, bottom-view.sideListHeight)
+		view.indexTree.Resize(view.left, bottom-view.sideListHeight+1, view.sideWidth, bottom)
 	} else if view.showSchema {
 		view.schemaList.Resize(view.left, view.top, view.sideWidth, view.sideListHeight)
-		view.tblList.Resize(view.left, view.sideListHeight+1, view.sideWidth, bottom)
+		view.tableTree.Resize(view.left, view.sideListHeight+1, view.sideWidth, bottom-view.sideListHeight)
+		view.indexTree.Resize(view.left, bottom-view.sideListHeight+1, view.sideWidth, bottom)
 	} else {
-		view.tblList.Resize(view.left, view.top, view.sideWidth, bottom)
+		view.tableTree.Resize(view.left, view.top, view.sideWidth, bottom-view.sideListHeight)
+		view.indexTree.Resize(view.left, bottom-view.sideListHeight+1, view.sideWidth, bottom)
 	}
 
 	screen.Fill(' ', *view.style)
@@ -139,9 +156,50 @@ func (view *MainView) SetSchemaList(schemaInfo []db.SchemaInfo) {
 	view.schemaList.SetList(items)
 }
 
-func (view *MainView) SetTableList(tables []db.Table) {
+func (view *MainView) SetIndexTree(tables []db.Table) {
 	if len(tables) == 0 {
-		view.tblList.SetItems([]*comp.TreeItem{})
+		view.indexTree.SetItems([]*comp.TreeItem{})
+	}
+
+	var items []*comp.TreeItem
+	for _, v := range tables {
+		table := &comp.TreeItem{
+			Label: []rune(v.Name),
+			Value: v.Name,
+			Level: 0,
+		}
+
+		for _, ix := range v.Indexes {
+			index := &comp.TreeItem{
+				Label: []rune(ix.Name),
+				Value: ix.Name,
+				Level: 1,
+				Child: true,
+			}
+
+			for _, col := range ix.Cols {
+				col := &comp.TreeItem{
+					Label: []rune(fmt.Sprintf("%s - seq %d", col.ColumnName, col.SeqNo)),
+					Value: col.ColumnName,
+					Level: 2,
+					Child: true,
+				}
+
+				index.Children = append(index.Children, col)
+			}
+
+			table.Children = append(table.Children, index)
+		}
+
+		items = append(items, table)
+	}
+
+	view.indexTree.SetItems(items)
+}
+
+func (view *MainView) SetTableTree(tables []db.Table) {
+	if len(tables) == 0 {
+		view.tableTree.SetItems([]*comp.TreeItem{})
 	}
 
 	var items []*comp.TreeItem
@@ -164,13 +222,14 @@ func (view *MainView) SetTableList(tables []db.Table) {
 		items = append(items, table)
 	}
 
-	view.tblList.SetItems(items)
+	view.tableTree.SetItems(items)
 }
 
 func (view *MainView) Render(screen tcell.Screen) {
 	view.editor.Render(screen)
-	view.tblList.Render(screen)
+	view.tableTree.Render(screen)
 	view.dataTable.Render(screen)
+	view.indexTree.Render(screen)
 
 	if view.showDB {
 		view.dbList.Render(screen)
@@ -197,7 +256,7 @@ func (view *MainView) HandleInput(ev tcell.Event) {
 	case SchemaList:
 		view.schemaList.HandleInput(ev)
 	case TblList:
-		view.tblList.HandleInput(ev)
+		view.tableTree.HandleInput(ev)
 	case DataTable:
 		view.dataTable.HandleInput(ev)
 	}
@@ -208,20 +267,20 @@ func (view *MainView) SetState(state MainViewState) {
 
 	switch state {
 	case Editor:
-		view.status.SetStatus([]rune("Editor: Normal"))
+		view.status.SetStatus([]rune("Editor: Normal"), EditorStatusStyle)
 	case DbList:
-		view.status.SetStatus([]rune("Databases"))
+		view.status.SetStatus([]rune("Databases"), DatabaseStatusStyle)
 	case SchemaList:
-		view.status.SetStatus([]rune("Schemas"))
+		view.status.SetStatus([]rune("Schemas"), SchemaStatusStyle)
 	case TblList:
-		view.status.SetStatus([]rune("Tables"))
+		view.status.SetStatus([]rune("Tables"), TableStatusStyle)
 	case DataTable:
-		view.status.SetStatus([]rune("DataTable"))
+		view.status.SetStatus([]rune("DataTable"), DataTableStatusStyle)
 	}
 }
 
 func (view *MainView) SetStatus(status []rune) {
-	view.status.SetStatus(status)
+	view.status.SetStatus(status, NoModeStatusStyle)
 }
 
 func (view *MainView) TableFunc() comp.TableDataFunc {

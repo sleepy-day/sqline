@@ -206,7 +206,12 @@ func (lite *Sqlite) Exec(cmd string) ([]rune, error) {
 		return nil, err
 	}
 
-	return []rune(fmt.Sprintf("%d rows affected", result.RowsAffected)), nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	return []rune(fmt.Sprintf("%d rows affected", rows)), nil
 }
 
 func (lite *Sqlite) GetExecSQLFunc() components.ExecSQLFunc {
@@ -216,14 +221,21 @@ func (lite *Sqlite) GetExecSQLFunc() components.ExecSQLFunc {
 		}
 
 		cmdStr := string(cmd)
-		var table [][][]rune = nil
-		var result []rune = nil
+		match, _ := regexp.MatchString(`(?i)(\s*|^)SELECT\s`, cmdStr)
 
 		var err error
-
-		table, err = lite.Select(cmdStr)
-		if err != nil {
-			return err
+		var table [][][]rune = nil
+		var result []rune = nil
+		if match {
+			table, err = lite.Select(cmdStr)
+			if err != nil {
+				return err
+			}
+		} else {
+			result, err = lite.Exec(cmdStr)
+			if err != nil {
+				return err
+			}
 		}
 
 		lite.tableDataFunc(table, result)
