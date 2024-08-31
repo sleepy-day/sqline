@@ -66,7 +66,6 @@ func CreateNewConnView(left, top, right, bottom int, style, hlStyle *tcell.Style
 
 	ncView.window = comp.CreateWindow(left, top, right, bottom, 2, 2, true, true, []rune("Add New Connection"), style)
 
-	// TODO: Error handling for there being enough space in the window
 	inpLeft, inpTop, inpRight, inpBottom := ncView.window.RequestRows(4)
 	ncView.driverRadio = comp.CreateRadioSelect(inpLeft, inpTop, inpRight, inpBottom, []rune("Driver:"), driverTypes, style, hlStyle)
 
@@ -77,15 +76,23 @@ func CreateNewConnView(left, top, right, bottom int, style, hlStyle *tcell.Style
 	ncView.connStrInput = comp.CreateTextBox(inpLeft, inpTop, inpRight, []rune("Connection String:"), style)
 
 	inpLeft, inpTop, inpRight, _ = ncView.window.RequestRows(3)
-	ncView.testButton = comp.CreateButton(inpLeft, inpTop, []rune("Test"), style, hlStyle)
+	ncView.testButton = comp.CreateButton(inpLeft, inpTop, []rune("Test"), style)
 
 	inpLeft += 7
-	ncView.saveButton = comp.CreateButton(inpLeft, inpTop, []rune("Save"), style, hlStyle)
+	ncView.saveButton = comp.CreateButton(inpLeft, inpTop, []rune("Save"), style)
 
 	inpLeft, inpTop, inpRight, inpBottom = ncView.window.RequestRows(3)
 	ncView.infoBox = comp.CreateInfoBox(inpLeft, inpTop, inpRight, inpBottom, style)
 
 	return ncView
+}
+
+func (ncv *NewConnView) ResetFocus() {
+	ncv.driverRadio.LoseFocus()
+	ncv.nameInput.LoseFocus()
+	ncv.connStrInput.LoseFocus()
+	ncv.testButton.LoseFocus()
+	ncv.saveButton.LoseFocus()
 }
 
 func (ncv *NewConnView) Render(screen tcell.Screen) {
@@ -100,17 +107,24 @@ func (ncv *NewConnView) Render(screen tcell.Screen) {
 
 func (ncv *NewConnView) HandleInput(ev *tcell.EventKey) {
 	if ev.Key() == tcell.KeyTab {
+		ncv.ResetFocus()
+
 		switch ncv.selected {
 		case driverRadio:
 			ncv.selected = nameInput
+			ncv.nameInput.Focus()
 		case nameInput:
 			ncv.selected = connStrInput
+			ncv.connStrInput.Focus()
 		case connStrInput:
 			ncv.selected = testButton
+			ncv.testButton.Focus()
 		case testButton:
 			ncv.selected = saveButton
+			ncv.saveButton.Focus()
 		case saveButton:
-			ncv.selected = nameInput
+			ncv.selected = driverRadio
+			ncv.driverRadio.Focus()
 		}
 		return
 	}
@@ -161,6 +175,7 @@ func (ncv *NewConnView) HandleInput(ev *tcell.EventKey) {
 		}
 
 		ncv.saveFunc(name, connStr, driver)
+		ncv.Reset()
 		ncv.infoBox.SetMessage("Connection saved")
 	}
 }
@@ -169,7 +184,9 @@ func (ncv *NewConnView) Reset() {
 	ncv.driverRadio.Reset()
 	ncv.nameInput.Reset()
 	ncv.connStrInput.Reset()
-	ncv.testButton.Reset()
-	ncv.saveButton.Reset()
+	ncv.testButton.LoseFocus()
+	ncv.saveButton.LoseFocus()
 	ncv.infoBox.Reset()
+
+	ncv.driverRadio.Focus()
 }

@@ -11,11 +11,12 @@ type RadioFunc func(ev tcell.Event)
 type RadioSelect struct {
 	left, top, right, bottom int
 	selected                 int
-	style                    *tcell.Style
-	hlStyle                  *tcell.Style
+	style, selHlStyle        *tcell.Style
+	hlStyle                  tcell.Style
 	label                    []rune
 	opts                     []ListItem[string]
 	radioFn                  RadioFunc
+	focus                    bool
 }
 
 func CreateRadioSelect(left, top, right, bottom int, label []rune, opts []ListItem[string], style, hlStyle *tcell.Style) *RadioSelect {
@@ -24,20 +25,22 @@ func CreateRadioSelect(left, top, right, bottom int, label []rune, opts []ListIt
 	}
 
 	return &RadioSelect{
-		left:     left,
-		top:      top,
-		right:    right,
-		bottom:   bottom,
-		style:    style,
-		hlStyle:  hlStyle,
-		selected: -1,
-		opts:     opts,
-		label:    label,
+		left:       left,
+		top:        top,
+		right:      right,
+		bottom:     bottom,
+		style:      style,
+		selHlStyle: hlStyle,
+		hlStyle:    tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack),
+		selected:   -1,
+		opts:       opts,
+		label:      label,
 	}
 }
 
 func (rs *RadioSelect) Reset() {
 	rs.selected = -1
+	rs.focus = false
 }
 
 func (rs *RadioSelect) HandleInput(ev *tcell.EventKey) {
@@ -64,7 +67,11 @@ func (rs *RadioSelect) GetSelection() string {
 
 func (rs *RadioSelect) Render(screen tcell.Screen) {
 	for i, v := range rs.label {
-		screen.SetContent(rs.left+i, rs.top, v, nil, *rs.style)
+		if rs.focus {
+			screen.SetContent(rs.left+i, rs.top, v, nil, rs.hlStyle)
+		} else {
+			screen.SetContent(rs.left+i, rs.top, v, nil, *rs.style)
+		}
 	}
 
 	var width int
@@ -80,7 +87,7 @@ func (rs *RadioSelect) Render(screen tcell.Screen) {
 			}
 
 			if rs.selected == j {
-				screen.SetContent(radioWidth+i+1, rs.top+2, ch, nil, *rs.hlStyle)
+				screen.SetContent(radioWidth+i+1, rs.top+2, ch, nil, *rs.selHlStyle)
 			} else {
 				screen.SetContent(radioWidth+i+1, rs.top+2, ch, nil, *rs.style)
 			}
@@ -96,4 +103,12 @@ func (rs *RadioSelect) Render(screen tcell.Screen) {
 
 		width += len(opt.Label) + 3
 	}
+}
+
+func (rs *RadioSelect) Focus() {
+	rs.focus = true
+}
+
+func (rs *RadioSelect) LoseFocus() {
+	rs.focus = false
 }

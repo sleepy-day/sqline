@@ -10,9 +10,12 @@ type TextBox struct {
 	focused          bool
 	left, top, right int
 	cursorPos        int
+	offset           int
 	style            *tcell.Style
+	hlStyle          tcell.Style
 	buf              []rune
 	label            []rune
+	focus            bool
 }
 
 func CreateTextBox(left, top, right int, label []rune, style *tcell.Style) *TextBox {
@@ -24,25 +27,45 @@ func CreateTextBox(left, top, right int, label []rune, style *tcell.Style) *Text
 		buf:     []rune{},
 		label:   label,
 		focused: false,
+		hlStyle: tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack),
 	}
 }
 
 func (tbox *TextBox) HandleInput(ev *tcell.EventKey) {
 	bufEmpty := len(tbox.buf) == 0
 	reachedEnd := tbox.cursorPos >= len(tbox.buf)
-	reachedStart := tbox.cursorPos == 0
+	reachedStart := tbox.cursorPos == 0 && tbox.offset == 0
 
 	switch {
 	case ev.Key() == tcell.KeyLeft:
-		if bufEmpty || reachedStart {
+		if bufEmpty {
 			break
+		} else if tbox.cursorPos == 0 && tbox.offset > 0 {
+			tbox.offset--
+		} else {
+			tbox.cursorPos--
 		}
-		tbox.cursorPos--
 	case ev.Key() == tcell.KeyRight:
 		if bufEmpty || reachedEnd {
 			break
 		}
 		tbox.cursorPos++
+	case ev.Key() == tcell.KeyBackspace2 || ev.Key() == tcell.KeyBackspace:
+		if reachedStart {
+			break
+		}
+
+		if tbox.cursorPos+tbox.offset == len(tbox.buf) {
+			tbox.buf = tbox.buf[:len(tbox.buf)-1]
+		} else {
+			tbox.buf = append(tbox.buf[:tbox.offset+tbox.cursorPos-2], tbox.buf[tbox.offset+tbox.cursorPos-1:]...)
+		}
+
+		if tbox.offset == 0 {
+			tbox.offset--
+		} else {
+			tbox.cursorPos--
+		}
 	default:
 		ch := ev.Rune()
 		if ch == 0 {
@@ -62,13 +85,22 @@ func (tbox *TextBox) HandleInput(ev *tcell.EventKey) {
 		tbox.buf = slices.Insert(tbox.buf, tbox.cursorPos, ch)
 		tbox.cursorPos++
 	}
+
+	if tbox.cursorPos > tbox.right-tbox.left {
+		tbox.cursorPos--
+		tbox.offset++
+	}
 }
 
 func (tbox *TextBox) Render(screen tcell.Screen) {
 	width := tbox.right - tbox.left - 6
 	for i := range width {
 		if i < len(tbox.label) {
-			screen.SetContent(tbox.left+i, tbox.top, tbox.label[i], nil, *tbox.style)
+			if tbox.focus {
+				screen.SetContent(tbox.left+i, tbox.top, tbox.label[i], nil, tbox.hlStyle)
+			} else {
+				screen.SetContent(tbox.left+i, tbox.top, tbox.label[i], nil, *tbox.style)
+			}
 		}
 
 		if i == 0 {
@@ -82,10 +114,8 @@ func (tbox *TextBox) Render(screen tcell.Screen) {
 			screen.SetContent(tbox.left+i, tbox.top+3, tcell.RuneLRCorner, nil, *tbox.style)
 			continue
 		} else if i == 1 {
-			if len(tbox.buf) > 1 {
-				screen.SetContent(tbox.left+i, tbox.top+2, tbox.buf[0], tbox.buf[1:], *tbox.style)
-			} else if len(tbox.buf) > 0 {
-				screen.SetContent(tbox.left+i, tbox.top+2, tbox.buf[0], nil, *tbox.style)
+			for j, ch := range tbox.buf {
+				screen.SetContent(tbox.left+i+j, tbox.top+2, ch, nil, *tbox.style)
 			}
 		}
 
@@ -96,6 +126,9 @@ func (tbox *TextBox) Render(screen tcell.Screen) {
 		screen.SetContent(tbox.left+i, tbox.top+1, tcell.RuneHLine, nil, *tbox.style)
 		screen.SetContent(tbox.left+i, tbox.top+3, tcell.RuneHLine, nil, *tbox.style)
 
+	}
+
+	if tbox.focus {
 		screen.ShowCursor(tbox.left+tbox.cursorPos+1, tbox.top+2)
 	}
 }
@@ -111,4 +144,14 @@ func (tbox *TextBox) GetString() string {
 func (tbox *TextBox) Reset() {
 	tbox.buf = []rune{}
 	tbox.cursorPos = 0
+	tbox.offset = 0
+	tbox.focus = false
+}
+
+func (tbox *TextBox) Focus() {
+	tbox.focus = true
+}
+
+func (tbox *TextBox) LoseFocus() {
+	tbox.focus = false
 }

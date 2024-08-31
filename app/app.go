@@ -112,6 +112,7 @@ func (sqline *Sqline) createTestFunc() views.TestFunc {
 func (sqline *Sqline) createSelectFunc() views.SelectFunc {
 	return func(dbEntry util.DBEntry) {
 		sqline.setDB(dbEntry)
+		sqline.state = NormalMode
 	}
 }
 
@@ -127,6 +128,9 @@ func (sqline *Sqline) createSaveFunc() views.SaveFunc {
 		if err != nil {
 			sqline.handleError(err)
 		}
+
+		sqline.state = NormalMode
+		sqline.mainView.SetInfo([]rune("Connection Saved!"))
 	}
 }
 

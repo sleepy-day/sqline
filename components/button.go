@@ -3,28 +3,29 @@ package components
 import "github.com/gdamore/tcell/v2"
 
 type Button struct {
-	left, top      int
-	width          int
-	highlighted    bool
-	text           []rune
-	style, hlStyle *tcell.Style
+	left, top int
+	width     int
+	text      []rune
+	style     *tcell.Style
+	hlStyle   tcell.Style
+	focus     bool
 }
 
-func CreateButton(left, top int, text []rune, style, hlStyle *tcell.Style) *Button {
+func CreateButton(left, top int, text []rune, style *tcell.Style) *Button {
 	return &Button{
 		left:    left,
 		top:     top,
 		width:   len(text) + 2,
 		text:    text,
 		style:   style,
-		hlStyle: hlStyle,
+		hlStyle: tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack),
 	}
 }
 
 func (b *Button) Render(screen tcell.Screen) {
 	style := b.style
-	if b.highlighted {
-		style = b.hlStyle
+	if b.focus {
+		style = &b.hlStyle
 	}
 
 	for i := range b.width {
@@ -46,10 +47,10 @@ func (b *Button) Render(screen tcell.Screen) {
 	}
 }
 
-func (b *Button) SetHL(hl bool) {
-	b.highlighted = hl
+func (b *Button) Focus() {
+	b.focus = true
 }
 
-func (b *Button) Reset() {
-	b.highlighted = false
+func (b *Button) LoseFocus() {
+	b.focus = false
 }
