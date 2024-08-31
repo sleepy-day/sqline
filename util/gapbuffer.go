@@ -259,22 +259,33 @@ func (gap *GapBuffer) GetTextInRange(start, end Pos) ([]rune, error) {
 		return nil, ErrInvalidRange
 	}
 
-	lines := gap.GetLines(start.Line, end.Line)
-	if len(lines) != end.Line-start.Line+1 {
-		panic("invalid amount of lines returned")
+	if start.Line < 0 {
+		start.Line = 0
 	}
+	if start.Col < 0 {
+		start.Col = 0
+	}
+	if end.Col < 0 {
+		end.Col = 0
+	}
+
+	lines := gap.GetLines(start.Line, end.Line)
 
 	if start.Line == end.Line {
 		endCol := end.Col
 		if endCol >= len(lines[0]) {
-			endCol = len(lines[0]) - 1
+			endCol = len(lines[0])
 		}
 		return lines[0][start.Col:endCol], nil
 	}
 
-	lineCount := end.Line - start.Line + 1
+	lineCount := end.Line - start.Line
 	var text []rune
 	for i, v := range lines {
+		endCol := end.Col
+		if endCol >= len(v) {
+			endCol = len(v)
+		}
 		switch {
 		case i == 0:
 			text = append(text, v[start.Col:]...)

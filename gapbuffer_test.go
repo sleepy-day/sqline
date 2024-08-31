@@ -100,7 +100,7 @@ Here->`
 	}
 }
 
-func TestGetTextInRange(t *testing.T) {
+func TestGetTextInRange_AcrossMultipleLines(t *testing.T) {
 	text := `Test Line One
 Test Line Two
 Test Line Three
@@ -123,26 +123,65 @@ Testing Line Five
 
 	gap, _ := util.CreateGapBuffer([]byte(text), 200)
 
-	result, _ := gap.GetTextInRange(
+	result, err := gap.GetTextInRange(
 		util.Pos{Line: 1, Col: 6},
 		util.Pos{Line: 7, Col: 2},
 	)
+	if err != nil {
+		t.Fatalf("error from GetTexxtInRange %s", err.Error())
+	}
 
 	if string(result) != expected {
 		t.Fatalf("error in GetTextInRange, expected %s got %s", expected, string(result))
 	}
+}
 
-	text = `SELECT * FROM TestTable;`
+func TestGetTextInRange_AcrossOneLine(t *testing.T) {
+	text := `SELECT * FROM TestTable;`
 
-	gap, _ = util.CreateGapBuffer([]byte(text), 200)
+	gap, _ := util.CreateGapBuffer([]byte(text), 200)
 
-	result, _ = gap.GetTextInRange(
+	result, _ := gap.GetTextInRange(
 		util.Pos{Line: 0, Col: 0},
 		util.Pos{Line: 0, Col: 24},
 	)
 
 	if string(result) != text {
 		t.Fatalf("error in GetTextInRange, expected %s got %s", text, string(result))
+	}
+}
+
+func TestGetTextInRange_WithOutOfBoundsPositions(t *testing.T) {
+	text := `We are testing
+need a few lines
+
+last line`
+
+	gap, _ := util.CreateGapBuffer([]byte(text), 200)
+
+	result, err := gap.GetTextInRange(
+		util.Pos{Line: -1, Col: -1},
+		util.Pos{Line: 999, Col: 300},
+	)
+	if err != nil {
+		t.Fatalf("error returned on GetTextInRange(): %s", err.Error())
+	}
+
+	if string(result) != text {
+		t.Fatalf("test didn't match. expected %s got %s", text, string(result))
+	}
+
+	result, err = gap.GetTextInRange(
+		util.Pos{Line: 0, Col: 0},
+		util.Pos{Line: 0, Col: 9999},
+	)
+
+	if err != nil {
+		t.Fatalf("error returned on GetTextInRange(): %s", err.Error())
+	}
+
+	if string(result) != "We are testing\n" {
+		t.Fatalf("text didn't match. expected %s got %s", "We are testing\n", string(result))
 	}
 }
 
