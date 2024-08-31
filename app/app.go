@@ -21,6 +21,14 @@ const (
 	NewConnView
 	OpenConnView
 	Editor
+
+	NormalInfo    = "e - Editor | d - DataTable | D - Databases | s - Schemas | t - Tables | i - Indexes | A - Add | C - Connect | CTRL+C - Quit"
+	EditorInfo    = "i - Insert Mode | v - Visual Mode | V - Visual Mode (Whole Line) | Esc - Normal Mode/Exit Editor Mode"
+	DataTableInfo = "Arrow Keys - Select Row/Col | Enter - Expand Cell | Esc - Normal Mode/Exit Expanded Cell"
+	ListInfo      = "Up/Down - Select Item | Esc - Normal Mode"
+	TreeInfo      = "Up/Down - Select Item | Enter - Expand/Collapse Selection | Esc - NormalMode"
+	OpenConnInfo  = "Up/Down - Select Connection | Enter - Connect | Esc - Cancel"
+	NewConnInfo   = "Tab - Change Selection | 1-4 - Change Driver Selection on Radio | Enter - Select Buttons (If highlighted) | Esc - Cancel"
 )
 
 var (
@@ -72,7 +80,7 @@ func createSqline(maxX, maxY int, screen tcell.Screen) *Sqline {
 
 	conf, err := util.LoadConf()
 	if err != nil {
-		//TODO: pass error into error message display
+		defer sqline.handleError(err)
 	}
 
 	sqline.config = conf
@@ -80,11 +88,12 @@ func createSqline(maxX, maxY int, screen tcell.Screen) *Sqline {
 	sqline.newConnView = views.CreateNewConnView(sqline.pLeft, sqline.pTop, sqline.pRight, sqline.pBottom, &defStyle, &hlStyle, sqline.createTestFunc(), sqline.createSaveFunc())
 	sqline.openConnView = views.CreateOpenConnView(sqline.pLeft, sqline.pTop, sqline.pRight, sqline.pBottom, &defStyle, &hlStyle, sqline.config.SavedConns, sqline.createSelectFunc())
 
+	sqline.setInfo()
 	return &sqline
 }
 
 func (sqline *Sqline) handleError(err error) {
-	panic(err)
+	sqline.mainView.SetError([]rune(err.Error()))
 }
 
 func (sqline *Sqline) createTestFunc() views.TestFunc {
@@ -121,6 +130,34 @@ func (sqline *Sqline) createSaveFunc() views.SaveFunc {
 	}
 }
 
+func (sqline *Sqline) setInfo() {
+	switch {
+	case sqline.state == NormalMode:
+		sqline.mainView.SetInfo([]rune(NormalInfo))
+	case sqline.state == Editor && sqline.mainView.State == views.EditorInsert:
+		fallthrough
+	case sqline.state == Editor && sqline.mainView.State == views.EditorVisual:
+		fallthrough
+	case sqline.state == Editor && sqline.mainView.State == views.Editor:
+		sqline.mainView.SetInfo([]rune(EditorInfo))
+	case sqline.state == MainView && sqline.mainView.State == views.TblList:
+		fallthrough
+	case sqline.state == MainView && sqline.mainView.State == views.Indexes:
+		sqline.mainView.SetInfo([]rune(TreeInfo))
+	case sqline.state == MainView && sqline.mainView.State == views.DataTable:
+		sqline.mainView.SetInfo([]rune(DataTableInfo))
+	case sqline.state == MainView && sqline.mainView.State == views.SchemaList:
+		fallthrough
+	case sqline.state == MainView && sqline.mainView.State == views.DbList:
+		sqline.mainView.SetInfo([]rune(ListInfo))
+	case sqline.state == OpenConnView:
+		sqline.mainView.SetInfo([]rune(OpenConnInfo))
+	case sqline.state == NewConnView:
+		sqline.mainView.SetInfo([]rune(NewConnInfo))
+	}
+
+}
+
 func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
 	var err error
 	var database db.Database
@@ -129,9 +166,6 @@ func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
 		database, err = db.CreateSqlite(dbEntry.ConnStr, sqline.mainView.TableFunc())
 	case "postgres":
 		database = db.CreatePg()
-	case "mssql":
-
-	case "mysql":
 	}
 
 	if err != nil {
@@ -208,6 +242,7 @@ func Run() {
 	sync := false
 	var ev tcell.Event
 	for {
+
 		prevState := sqline.state
 		ev = screen.PollEvent()
 		switch ev := ev.(type) {
@@ -221,32 +256,44 @@ func Run() {
 				return
 			case ev.Key() == tcell.KeyEsc && sqline.mainView.EditorInNormalMode():
 				sqline.state = NormalMode
+				sqline.setInfo()
 				screen.Fill(' ', defStyle)
 				screen.Sync()
-				sqline.mainView.SetStatus([]rune("Normal"))
+				sqline.mainView.SetStatus("Normal")
 			case ev.Key() == tcell.KeyEsc && !sqline.mainView.EditorInNormalMode():
 				sqline.mainView.HandleInput(ev)
 			case ev.Rune() == 'e' && sqline.state == NormalMode:
 				sqline.state = Editor
 				sqline.mainView.SetState(views.Editor)
+				sqline.setInfo()
 			case ev.Rune() == 't' && sqline.state == NormalMode:
 				sqline.state = MainView
 				sqline.mainView.SetState(views.TblList)
+				sqline.setInfo()
 			case ev.Rune() == 'd' && sqline.state == NormalMode:
 				sqline.state = MainView
 				sqline.mainView.SetState(views.DataTable)
+				sqline.setInfo()
 			case ev.Rune() == 's' && sqline.state == NormalMode:
 				sqline.state = MainView
 				sqline.mainView.SetState(views.SchemaList)
+				sqline.setInfo()
 			case ev.Rune() == 'D' && sqline.state == NormalMode:
 				sqline.state = MainView
 				sqline.mainView.SetState(views.DbList)
+				sqline.setInfo()
+			case ev.Rune() == 'i' && sqline.state == NormalMode:
+				sqline.state = MainView
+				sqline.mainView.SetState(views.Indexes)
+				sqline.setInfo()
 			case ev.Rune() == 'A' && sqline.state == NormalMode:
 				sqline.state = NewConnView
-				sqline.mainView.SetStatus([]rune("NewConn"))
+				sqline.mainView.SetStatus("NewConn")
+				sqline.setInfo()
 			case ev.Rune() == 'C' && sqline.state == NormalMode:
 				sqline.state = OpenConnView
-				sqline.mainView.SetStatus([]rune("OpenConn"))
+				sqline.mainView.SetStatus("OpenConn")
+				sqline.setInfo()
 			default:
 				switch sqline.state {
 				case NewConnView:

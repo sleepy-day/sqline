@@ -14,20 +14,30 @@ type MainViewState byte
 const (
 	NoFocus MainViewState = iota
 	Editor
+	EditorVisual
+	EditorInsert
 	DbList
 	SchemaList
 	TblList
 	DataTable
+	Indexes
+
+	OpenConnStatus = "OpenConn"
+	NewConnStatus  = "NewConn"
 )
 
 var (
-	NoModeStatusStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorWhite)
-	EditorStatusStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorWhite)
-	DatabaseStatusStyle  tcell.Style = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
-	SchemaStatusStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
-	IndexStatusStyle     tcell.Style = tcell.StyleDefault.Background(tcell.ColorPurple).Foreground(tcell.ColorWhite)
-	TableStatusStyle     tcell.Style = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite)
-	DataTableStatusStyle tcell.Style = tcell.StyleDefault.Background(tcell.ColorOrange).Foreground(tcell.ColorWhite)
+	NoModeStatusStyle       tcell.Style = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorWhite)
+	EditorStatusStyle       tcell.Style = tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorWhite)
+	EditorVisualStatusStyle tcell.Style = tcell.StyleDefault.Background(tcell.ColorFuchsia).Foreground(tcell.ColorWhite)
+	EditorInsertStatusStyle tcell.Style = tcell.StyleDefault.Background(tcell.ColorLime).Foreground(tcell.ColorBlack)
+	DatabaseStatusStyle     tcell.Style = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+	SchemaStatusStyle       tcell.Style = tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+	TableStatusStyle        tcell.Style = tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite)
+	DataTableStatusStyle    tcell.Style = tcell.StyleDefault.Background(tcell.ColorOrange).Foreground(tcell.ColorWhite)
+	IndexesStatusStyle      tcell.Style = tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorWhite)
+	NewConnStatusStyle      tcell.Style = tcell.StyleDefault.Background(tcell.ColorMintCream).Foreground(tcell.ColorBlack)
+	OpenConnStatusStyle     tcell.Style = tcell.StyleDefault.Background(tcell.ColorCoral).Foreground(tcell.ColorWhite)
 )
 
 type MainView struct {
@@ -250,6 +260,17 @@ func (view *MainView) HandleInput(ev tcell.Event) {
 	case NoFocus:
 		break
 	case Editor:
+		if ev.(*tcell.EventKey).Rune() == 'i' {
+			view.SetState(EditorInsert)
+		}
+		if ev.(*tcell.EventKey).Rune() == 'v' || ev.(*tcell.EventKey).Rune() == 'V' {
+			view.SetState(EditorVisual)
+		}
+		fallthrough
+	case EditorVisual, EditorInsert:
+		if ev.(*tcell.EventKey).Key() == tcell.KeyEsc {
+			view.SetState(Editor)
+		}
 		view.editor.HandleInput(ev)
 	case DbList:
 		view.dbList.HandleInput(ev)
@@ -259,6 +280,8 @@ func (view *MainView) HandleInput(ev tcell.Event) {
 		view.tableTree.HandleInput(ev)
 	case DataTable:
 		view.dataTable.HandleInput(ev)
+	case Indexes:
+		view.indexTree.HandleInput(ev)
 	}
 }
 
@@ -268,6 +291,10 @@ func (view *MainView) SetState(state MainViewState) {
 	switch state {
 	case Editor:
 		view.status.SetStatus([]rune("Editor: Normal"), EditorStatusStyle)
+	case EditorVisual:
+		view.status.SetStatus([]rune("Editor: Visual"), EditorVisualStatusStyle)
+	case EditorInsert:
+		view.status.SetStatus([]rune("Editor: Insert"), EditorInsertStatusStyle)
 	case DbList:
 		view.status.SetStatus([]rune("Databases"), DatabaseStatusStyle)
 	case SchemaList:
@@ -276,11 +303,28 @@ func (view *MainView) SetState(state MainViewState) {
 		view.status.SetStatus([]rune("Tables"), TableStatusStyle)
 	case DataTable:
 		view.status.SetStatus([]rune("DataTable"), DataTableStatusStyle)
+	case Indexes:
+		view.status.SetStatus([]rune("Indexes"), IndexesStatusStyle)
 	}
 }
 
-func (view *MainView) SetStatus(status []rune) {
-	view.status.SetStatus(status, NoModeStatusStyle)
+func (view *MainView) SetStatus(status string) {
+	switch status {
+	case OpenConnStatus:
+		view.status.SetStatus([]rune(OpenConnStatus), OpenConnStatusStyle)
+	case NewConnStatus:
+		view.status.SetStatus([]rune(NewConnStatus), NewConnStatusStyle)
+	default:
+		view.status.SetStatus([]rune(status), NoModeStatusStyle)
+	}
+}
+
+func (view *MainView) SetError(msg []rune) {
+	view.status.SetErr(msg)
+}
+
+func (view *MainView) SetInfo(msg []rune) {
+	view.status.SetInfo(msg)
 }
 
 func (view *MainView) TableFunc() comp.TableDataFunc {
