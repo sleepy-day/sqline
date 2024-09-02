@@ -1,7 +1,7 @@
 # Sqline
 A Terminal UI tool for querying and managing SQL databases, [Tcell](https://github.com/gdamore/tcell) is used for creating the terminal UI. 
 # Build Instructions
-You can build it just by running ```go build```, it will require CGO so you will need to have a C compiler installed as well.
+A makefile has been provided for building the executable for Linux/Windows though I haven't tested the command on Windows to see if it will work, released built this way will be put in the folders ```release/linux``` and ```release/windows```. It can also be compiled by running ```go build``` though CGO is required so a C compiler will need to be installed.
 # Project Structure
 - app
   - Set up for the main program itself and where everything is called from
