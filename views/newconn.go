@@ -24,8 +24,6 @@ var (
 	driverTypes []comp.ListItem[string] = []comp.ListItem[string]{
 		{Label: []rune("Postgres"), Value: "postgres"},
 		{Label: []rune("Sqlite"), Value: "sqlite3"},
-		{Label: []rune("MySql"), Value: "mysql"},
-		{Label: []rune("MSSql"), Value: "mssql"},
 	}
 )
 

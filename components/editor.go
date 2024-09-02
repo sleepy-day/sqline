@@ -135,110 +135,117 @@ func (edit *Editor) moveToLineStart() {
 	edit.prevX = -1
 }
 
-func (edit *Editor) HandleInput(ev tcell.Event) {
-	switch event := ev.(type) {
-	case *tcell.EventKey:
-		if edit.mode == visual {
-			switch {
-			case event.Key() == tcell.KeyUp:
-				edit.moveUp()
-			case event.Key() == tcell.KeyDown:
-				edit.moveDown()
-			case event.Key() == tcell.KeyLeft:
-				edit.moveLeft()
-			case event.Key() == tcell.KeyRight:
-				edit.moveRight()
-			case event.Key() == tcell.KeyEnter:
-				edit.execSQL()
-			case event.Key() == tcell.KeyHome:
-				edit.moveToLineStart()
-			case event.Key() == tcell.KeyEnd:
-				edit.moveToLineEnd()
-			case event.Key() == tcell.KeyEsc:
-				edit.mode = normal
-				edit.hlLine = false
-				edit.hlStartPos = -1
-				edit.hlEndPos = -1
-				edit.hlStartLn = -1
-				edit.hlEndLn = -1
+func (edit *Editor) HandleInput(ev *tcell.EventKey) {
+	if edit.mode == visual {
+		switch ev.Key() {
+		case tcell.KeyUp:
+			edit.moveUp()
+		case tcell.KeyDown:
+			edit.moveDown()
+		case tcell.KeyLeft:
+			edit.moveLeft()
+		case tcell.KeyRight:
+			edit.moveRight()
+		case tcell.KeyEnter:
+			edit.execSQL()
+		case tcell.KeyHome:
+			edit.moveToLineStart()
+		case tcell.KeyEnd:
+			edit.moveToLineEnd()
+		case tcell.KeyEsc:
+			edit.mode = normal
+			edit.hlLine = false
+			edit.hlStartPos = -1
+			edit.hlEndPos = -1
+			edit.hlStartLn = -1
+			edit.hlEndLn = -1
 
-				return
-			}
-
-			edit.hlEndLn = edit.curY + edit.lineOffset
-			if !edit.hlLine {
-				edit.hlEndPos = edit.curX
-			}
+			return
 		}
 
-		if edit.mode == normal {
-			switch {
-			case event.Key() == tcell.KeyUp:
-				edit.moveUp()
-			case event.Key() == tcell.KeyDown:
-				edit.moveDown()
-			case event.Key() == tcell.KeyLeft:
-				edit.moveLeft()
-			case event.Key() == tcell.KeyRight:
-				edit.moveRight()
-			case event.Key() == tcell.KeyHome:
-				edit.moveToLineStart()
-			case event.Key() == tcell.KeyEnd:
-				edit.moveToLineEnd()
-			case event.Rune() == 'i':
+		edit.hlEndLn = edit.curY + edit.lineOffset
+		if !edit.hlLine {
+			edit.hlEndPos = edit.curX
+		}
+	}
+
+	if edit.mode == normal {
+		switch ev.Key() {
+		case tcell.KeyUp:
+			edit.moveUp()
+		case tcell.KeyDown:
+			edit.moveDown()
+		case tcell.KeyLeft:
+			edit.moveLeft()
+		case tcell.KeyRight:
+			edit.moveRight()
+		case tcell.KeyHome:
+			edit.moveToLineStart()
+		case tcell.KeyEnd:
+			edit.moveToLineEnd()
+		case tcell.KeyRune:
+			switch ev.Rune() {
+			case 'i':
 				edit.mode = insert
-			case event.Rune() == 'V' && edit.mode == normal:
+			case 'V':
+				if edit.mode != normal {
+					break
+				}
 				edit.mode = visual
 				edit.hlLine = true
 				edit.hlStartPos = 0
 				edit.hlEndPos = edit.getLineLength()
 				edit.hlStartLn = edit.curY + edit.lineOffset
 				edit.hlEndLn = edit.curY + edit.lineOffset
-			case event.Rune() == 'v' && edit.mode == normal:
+			case 'v':
+				if edit.mode != normal {
+					break
+				}
 				edit.mode = visual
 				edit.hlStartPos = edit.curX
 				edit.hlStartLn = edit.curY + edit.lineOffset
 				edit.hlEndPos = edit.curX
 				edit.hlEndLn = edit.curY + edit.lineOffset
-			}
 
-			return
+			}
 		}
 
-		if edit.mode == insert {
-			switch {
-			case event.Key() == tcell.KeyUp:
-				edit.moveUp()
-			case event.Key() == tcell.KeyDown:
-				edit.moveDown()
-			case event.Key() == tcell.KeyLeft:
-				edit.moveLeft()
-			case event.Key() == tcell.KeyRight:
-				edit.moveRight()
-			case event.Key() == tcell.KeyEnter:
-				edit.insertNewLine()
-			case event.Key() == tcell.KeyTab:
-				edit.insertTab()
-			case event.Key() == tcell.KeyHome:
-				edit.moveToLineStart()
-			case event.Key() == tcell.KeyEnd:
-				edit.moveToLineEnd()
-			case event.Key() == tcell.KeyBackspace2 || event.Key() == tcell.KeyBackspace:
-				if !edit.atStartOfFile() {
-					edit.delete(true)
-				}
-			case event.Key() == tcell.KeyDelete:
-				if !edit.atEndOfFile() {
-					edit.delete(false)
-				}
-			case event.Key() == tcell.KeyEsc:
-				edit.mode = normal
-			default:
-				edit.insertChar(event.Rune())
-			}
+		return
+	}
 
-			return
+	if edit.mode == insert {
+		switch ev.Key() {
+		case tcell.KeyUp:
+			edit.moveUp()
+		case tcell.KeyDown:
+			edit.moveDown()
+		case tcell.KeyLeft:
+			edit.moveLeft()
+		case tcell.KeyRight:
+			edit.moveRight()
+		case tcell.KeyEnter:
+			edit.insertNewLine()
+		case tcell.KeyTab:
+			edit.insertTab()
+		case tcell.KeyHome:
+			edit.moveToLineStart()
+		case tcell.KeyEnd:
+			edit.moveToLineEnd()
+		case tcell.KeyBackspace2, tcell.KeyBackspace:
+			if !edit.atStartOfFile() {
+				edit.delete(true)
+			}
+		case tcell.KeyDelete:
+			if !edit.atEndOfFile() {
+				edit.delete(false)
+			}
+		case tcell.KeyEsc:
+			edit.mode = normal
+		default:
+			edit.insertChar(ev.Rune())
 		}
+
+		return
 	}
 }
 
@@ -640,8 +647,11 @@ func (edit *Editor) Render(screen tcell.Screen) {
 	}
 
 	for row, v := range edit.lines {
-		spaces := 0
+		if row > edit.innerHeight {
+			break
+		}
 
+		spaces := 0
 		for col, ch := range v {
 			line := row + edit.lineOffset
 

@@ -20,6 +20,7 @@ const (
 	SchemaList
 	TblList
 	DataTable
+	DataTableExpanded
 	Indexes
 
 	OpenConnStatus = "OpenConn"
@@ -100,7 +101,7 @@ func CreateMainView(left, top, right, bottom, pLeft, pTop, pRight, pBottom int, 
 	tableHeight := 16
 	view.editor = comp.CreateEditor(mainSideStart, view.top, view.right, viewBottom-tableHeight, nil, style, hlStyle)
 	view.dataTable = comp.CreateTable(mainSideStart, view.bottom-tableHeight, view.right, viewBottom, pLeft, pTop, pRight, pBottom, 30, nil, style)
-	view.status = comp.CreateStatusBar(view.left, view.bottom, view.right, 5, []rune("NoMode"), style, &NoModeStatusStyle)
+	view.status = comp.CreateStatusBar(view.left, view.bottom, view.right, 5, []rune("Normal"), style, &NoModeStatusStyle)
 
 	return view
 }
@@ -255,20 +256,20 @@ func (view *MainView) EditorInNormalMode() bool {
 	return view.editor.InNormalMode()
 }
 
-func (view *MainView) HandleInput(ev tcell.Event) {
+func (view *MainView) HandleInput(ev *tcell.EventKey) {
 	switch view.State {
 	case NoFocus:
 		break
 	case Editor:
-		if ev.(*tcell.EventKey).Rune() == 'i' {
+		if ev.Rune() == 'i' {
 			view.SetState(EditorInsert)
 		}
-		if ev.(*tcell.EventKey).Rune() == 'v' || ev.(*tcell.EventKey).Rune() == 'V' {
+		if ev.Rune() == 'v' || ev.Rune() == 'V' {
 			view.SetState(EditorVisual)
 		}
 		fallthrough
 	case EditorVisual, EditorInsert:
-		if ev.(*tcell.EventKey).Key() == tcell.KeyEsc {
+		if ev.Key() == tcell.KeyEsc {
 			view.SetState(Editor)
 		}
 		view.editor.HandleInput(ev)
@@ -278,7 +279,15 @@ func (view *MainView) HandleInput(ev tcell.Event) {
 		view.schemaList.HandleInput(ev)
 	case TblList:
 		view.tableTree.HandleInput(ev)
+	case DataTableExpanded:
+		if ev.Key() == tcell.KeyEsc {
+			view.State = DataTable
+		}
+		fallthrough
 	case DataTable:
+		if ev.Key() == tcell.KeyEnter {
+			view.State = DataTableExpanded
+		}
 		view.dataTable.HandleInput(ev)
 	case Indexes:
 		view.indexTree.HandleInput(ev)

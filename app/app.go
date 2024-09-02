@@ -179,7 +179,7 @@ func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
 	var database db.Database
 	switch dbEntry.Driver {
 	case "sqlite3":
-		database, err = db.CreateSqlite(dbEntry.ConnStr, sqline.mainView.TableFunc())
+		database, err = db.CreateSqlite(dbEntry.ConnStr, sqline.mainView.TableFunc(), sqline.updateDBInfoFunc())
 	case "postgres":
 		database = db.CreatePg()
 	}
@@ -221,6 +221,13 @@ func (sqline *Sqline) setDB(dbEntry util.DBEntry) {
 	sqline.mainView.SetTableTree(tables)
 	sqline.mainView.SetIndexTree(tables)
 	sqline.mainView.SetVisibleComponents(showDB, showSchema, sqline.screen)
+}
+
+func (sqline *Sqline) updateDBInfoFunc() func([]db.Table) {
+	return func(tables []db.Table) {
+		sqline.mainView.SetTableTree(tables)
+		sqline.mainView.SetIndexTree(tables)
+	}
 }
 
 func (sqline *Sqline) setDBInfo(dbInfo []db.DbInfo) {
@@ -270,6 +277,9 @@ func Run() {
 			case ev.Key() == tcell.KeyCtrlC || ev.Rune() == 'Q':
 				screen.Fini()
 				return
+			case ev.Key() == tcell.KeyEsc && sqline.mainView.State == views.DataTableExpanded:
+				sqline.mainView.HandleInput(ev)
+				screen.Fill(' ', defStyle)
 			case ev.Key() == tcell.KeyEsc && sqline.mainView.EditorInNormalMode():
 				sqline.state = NormalMode
 				sqline.setInfo()

@@ -65,27 +65,24 @@ func (list *List[T]) Add(item *ListItem[T]) {
 	list.listItems = append(list.listItems, *item)
 }
 
-func (list *List[T]) HandleInput(ev tcell.Event) {
-	switch event := ev.(type) {
-	case *tcell.EventKey:
-		switch {
-		case event.Key() == tcell.KeyUp:
-			if list.selected == 0 {
-				break
-			}
-			list.selected--
-			if list.selected < list.offset {
-				list.offset--
-			}
-		case event.Key() == tcell.KeyDown:
-			if list.selected == len(list.listItems)-1 {
-				break
-			}
-			list.selected++
+func (list *List[T]) HandleInput(ev *tcell.EventKey) {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		if list.selected == 0 {
+			break
+		}
+		list.selected--
+		if list.selected < list.offset {
+			list.offset--
+		}
+	case tcell.KeyDown:
+		if list.selected == len(list.listItems)-1 {
+			break
+		}
+		list.selected++
 
-			if list.selected >= list.bottom-list.top-1 && list.offset < list.bottom-list.top-list.offset-1 {
-				list.offset++
-			}
+		if list.selected >= list.bottom-list.top-1 && list.offset < list.bottom-list.top-list.offset-1 {
+			list.offset++
 		}
 	}
 }

@@ -9,19 +9,21 @@ import (
 )
 
 type Sqlite struct {
-	db            *sqlx.DB
-	connStr       string
-	driver        string
-	tableDataFunc func([][][]rune, []rune)
-	selectRegex   *regexp.Regexp
+	db             *sqlx.DB
+	connStr        string
+	driver         string
+	tableDataFunc  func([][][]rune, []rune)
+	updateViewFunc func([]Table)
+	selectRegex    *regexp.Regexp
 }
 
-func CreateSqlite(connStr string, tableFunc func([][][]rune, []rune)) (*Sqlite, error) {
+func CreateSqlite(connStr string, tableFunc func([][][]rune, []rune), updateViewFunc func([]Table)) (*Sqlite, error) {
 	sqlite := &Sqlite{
-		driver:        "sqlite3",
-		connStr:       connStr,
-		tableDataFunc: tableFunc,
-		selectRegex:   selectRegex(),
+		driver:         "sqlite3",
+		connStr:        connStr,
+		tableDataFunc:  tableFunc,
+		updateViewFunc: updateViewFunc,
+		selectRegex:    selectRegex(),
 	}
 
 	var err error
@@ -69,7 +71,9 @@ func (lite *Sqlite) GetTables() ([]Table, error) {
 		INNER JOIN
 			pragma_table_info(ss.name) pti
 		LEFT JOIN
-			pragma_foreign_key_list(ss.name) pfkl;
+			pragma_foreign_key_list(ss.name) pfkl
+		ORDER BY
+			ss.name;
 	`)
 	if err != nil {
 		return nil, err
@@ -235,6 +239,14 @@ func (lite *Sqlite) GetExecSQLFunc() components.ExecSQLFunc {
 			result, err = lite.Exec(cmdStr)
 			if err != nil {
 				return err
+			}
+		}
+
+		matchTableUpdate, _ := regexp.MatchString(`(?i)(\s*|^)(CREATE\s*(TEMP\s*|TEMPORARY\s*)?(TABLE|INDEX)\s)|(DROP\s*TABLE\s)|(ALTER\s*TABLE\s)`, cmdStr)
+		if matchTableUpdate {
+			tables, err := lite.GetTables()
+			if err == nil {
+				lite.updateViewFunc(tables)
 			}
 		}
 

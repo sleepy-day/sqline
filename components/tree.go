@@ -80,31 +80,28 @@ func (tree *Tree) Add(item *TreeItem) {
 	tree.treeItems = append(tree.treeItems, item)
 }
 
-func (tree *Tree) HandleInput(ev tcell.Event) {
-	switch event := ev.(type) {
-	case *tcell.EventKey:
-		switch {
-		case event.Key() == tcell.KeyUp:
-			if tree.selected == 0 {
-				break
-			}
-			tree.selected--
-			if tree.selected < tree.offset {
-				tree.offset--
-			}
-		case event.Key() == tcell.KeyDown:
-			if tree.selected == len(tree.visibleItems)-1 {
-				break
-			}
-			tree.selected++
+func (tree *Tree) HandleInput(ev *tcell.EventKey) {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		if tree.selected == 0 {
+			break
+		}
+		tree.selected--
+		if tree.selected < tree.offset {
+			tree.offset--
+		}
+	case tcell.KeyDown:
+		if tree.selected == len(tree.visibleItems)-1 {
+			break
+		}
+		tree.selected++
 
-			if tree.selected >= tree.bottom-tree.top-1 && tree.offset < tree.bottom-tree.top-tree.offset-1 {
-				tree.offset++
-			}
-		case event.Key() == tcell.KeyEnter:
-			if len(tree.visibleItems[tree.selected].Children) > 0 {
-				tree.visibleItems[tree.selected].expanded = !tree.visibleItems[tree.selected].expanded
-			}
+		if tree.selected >= tree.bottom-tree.top-1 && tree.offset < tree.bottom-tree.top-tree.offset-1 {
+			tree.offset++
+		}
+	case tcell.KeyEnter:
+		if len(tree.visibleItems[tree.selected].Children) > 0 {
+			tree.visibleItems[tree.selected].expanded = !tree.visibleItems[tree.selected].expanded
 		}
 	}
 }

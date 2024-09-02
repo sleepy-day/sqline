@@ -54,11 +54,18 @@ func CreateTable(left, top, right, bottom, pLeft, pTop, pRight, pBottom, maxWidt
 		hlStyle:      tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorWhite),
 		window:       CreateWindow(left, top, right, bottom, 0, 0, true, true, nil, style),
 		popUpWindow:  CreateWindow(pLeft, pTop, pRight, pBottom, 0, 0, true, true, nil, style),
+		data:         data,
 	}
 
-	if len(data) > 0 && len(data[0]) > 0 {
-		t.data = data
-		t.colWidths = make([]int, len(data[0]))
+	t.popUpWidth = t.popUpWindow.GetUsableWidth()
+	t.CalculateColWidths()
+
+	return t
+}
+
+func (t *Table) CalculateColWidths() {
+	if len(t.data) > 0 && len(t.data[0]) > 0 {
+		t.colWidths = make([]int, len(t.data[0]))
 
 		totalWidth := 0
 		for col := range t.data[0] {
@@ -79,17 +86,13 @@ func CreateTable(left, top, right, bottom, pLeft, pTop, pRight, pBottom, maxWidt
 			totalWidth += width
 		}
 
-		if totalWidth > right-left {
+		if totalWidth > t.right-t.left {
 			t.scroll = true
 		}
 	}
-
-	t.popUpWidth = t.popUpWindow.GetUsableWidth()
-
-	return t
 }
 
-func (t *Table) HandleInput(ev tcell.Event) {
+func (t *Table) HandleInput(ev *tcell.EventKey) {
 	if len(t.data) == 0 {
 		return
 	}
@@ -102,74 +105,71 @@ func (t *Table) HandleInput(ev tcell.Event) {
 	}
 
 EventLoop:
-	switch event := ev.(type) {
-	case *tcell.EventKey:
-		switch {
-		case event.Key() == tcell.KeyUp:
-			if t.expanded {
-				if t.popUpScroll > 0 {
-					t.popUpScroll--
-				}
-
-				break
+	switch ev.Key() {
+	case tcell.KeyUp:
+		if t.expanded {
+			if t.popUpScroll > 0 {
+				t.popUpScroll--
 			}
 
-			if t.sRow <= 0 {
-				t.sRow = 0
-				break EventLoop
-			}
-
-			t.sRow--
-			if t.sRow < t.anchorRow {
-				t.anchorRow--
-			}
-		case event.Key() == tcell.KeyDown:
-			if t.expanded {
-				if (t.popUpScroll * t.popUpWidth) < len(t.currentCell) {
-					t.popUpScroll++
-				}
-
-				break
-			}
-
-			if t.sRow+t.anchorRow >= len(t.data)-1 || t.expanded {
-				break EventLoop
-			}
-
-			if t.sRow < t.tableHeight-1 {
-				t.sRow++
-			} else if t.sRow == t.tableHeight-1 && t.sRow+t.anchorRow < len(t.data) {
-				t.anchorRow++
-			}
-		case event.Key() == tcell.KeyLeft:
-			if t.sCol <= 0 {
-				t.sCol = 0
-				break EventLoop
-			} else if t.expanded {
-				break EventLoop
-			}
-
-			t.sCol--
-			if t.sCol < t.anchorCol {
-				t.anchorCol--
-				t.lastAnchorCol--
-			}
-		case event.Key() == tcell.KeyRight:
-			if t.sCol >= len(t.data[0])-1 || t.expanded {
-				break EventLoop
-			}
-			t.sCol++
-			if t.sCol >= t.lastAnchorCol-1 && t.lastAnchorCol < len(t.data[0]) {
-				t.lastAnchorCol++
-				t.anchorCol++
-			}
-		case event.Key() == tcell.KeyEnter:
-			t.currentCell = t.data[t.sRow+t.anchorRow][t.sCol]
-			t.popUpScroll = 0
-			t.expanded = true
-		case event.Key() == tcell.KeyEsc:
-			t.expanded = false
+			break
 		}
+
+		if t.sRow <= 0 {
+			t.sRow = 0
+			break EventLoop
+		}
+
+		t.sRow--
+		if t.sRow < t.anchorRow {
+			t.anchorRow--
+		}
+	case tcell.KeyDown:
+		if t.expanded {
+			if (t.popUpScroll * t.popUpWidth) < len(t.currentCell) {
+				t.popUpScroll++
+			}
+
+			break
+		}
+
+		if t.sRow+t.anchorRow >= len(t.data)-1 || t.expanded {
+			break EventLoop
+		}
+
+		if t.sRow < t.tableHeight-1 {
+			t.sRow++
+		} else if t.sRow == t.tableHeight-1 && t.sRow+t.anchorRow < len(t.data) {
+			t.anchorRow++
+		}
+	case tcell.KeyLeft:
+		if t.sCol <= 0 {
+			t.sCol = 0
+			break EventLoop
+		} else if t.expanded {
+			break EventLoop
+		}
+
+		t.sCol--
+		if t.sCol < t.anchorCol {
+			t.anchorCol--
+			t.lastAnchorCol--
+		}
+	case tcell.KeyRight:
+		if t.sCol >= len(t.data[0])-1 || t.expanded {
+			break EventLoop
+		}
+		t.sCol++
+		if t.sCol >= t.lastAnchorCol-3 && t.lastAnchorCol < len(t.data[0]) {
+			t.lastAnchorCol++
+			t.anchorCol++
+		}
+	case tcell.KeyEnter:
+		t.currentCell = t.data[t.sRow+t.anchorRow][t.sCol]
+		t.popUpScroll = 0
+		t.expanded = true
+	case tcell.KeyEsc:
+		t.expanded = false
 	}
 }
 
@@ -185,7 +185,7 @@ func (t *Table) Render(screen tcell.Screen) {
 	colAdjust, padOffset := 0, 0
 	if t.sCol == len(t.data[0])-1 && t.scroll {
 		colAdjust = 1
-		padOffset = -10
+		padOffset = -t.colWidths[len(t.colWidths)-1]
 	}
 
 	colWidth, cols := 0, 0
@@ -250,7 +250,7 @@ func (t *Table) Render(screen tcell.Screen) {
 	}
 
 	if t.lastAnchorCol == 0 {
-		t.lastAnchorCol = lastAnchorCol
+		t.lastAnchorCol = lastAnchorCol - 1
 	}
 
 	if t.expanded {
@@ -345,35 +345,12 @@ func (t *Table) TableFunc() TableDataFunc {
 		t.data = table
 		t.resultMsg = resultMsg
 
-		t.colWidths = make([]int, len(table[0]))
-
-		totalWidth := 0
-		for col := range t.data[0] {
-
-			width := 0
-			for row := range t.data {
-				if len(t.data[row][col]) > t.maxWidth {
-					width = t.maxWidth
-					break
-				}
-
-				if len(t.data[row][col]) > width {
-					width = len(t.data[row][col])
-				}
-			}
-
-			t.colWidths[col] = width
-			totalWidth += width
-		}
-
-		if totalWidth > t.right-t.left {
-			t.scroll = true
-		}
-
 		t.refresh = true
 		t.sCol = -1
 		t.sRow = -1
 		t.anchorRow = 0
 		t.anchorCol = 0
+		t.lastAnchorCol = 0
+		t.CalculateColWidths()
 	}
 }
