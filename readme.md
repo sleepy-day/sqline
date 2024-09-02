@@ -1,22 +1,37 @@
 # Sqline
-A Terminal UI tool for querying and managing SQL databases, [Tcell](https://github.com/gdamore/tcell) is used for creating the Terminal UI. Currently in development.
+A Terminal UI tool for querying and managing SQL databases, [Tcell](https://github.com/gdamore/tcell) is used for creating the terminal UI. 
 # Build Instructions
-Makefile will be provided for building for other systems or recommended compile flags.
-TODO: make the makefile
-# Getting started
-TODO
+You can build it just by running ```go build```, it will require CGO so you will need to have a C compiler installed as well.
+# Project Structure
+- app
+  - Set up for the main program itself and where everything is called from
+- components
+  - Contains the UI elements, these are reused throughout the project
+- util
+  - Contains the code for saving/loading the config and the gap buffer code
+- db
+  - Contains implementations for database interfaces (Currently has a minimal Sqlite and very partial Postgres implementation)
+- views
+  - Contains the different views which use components to make up different screens/menus
 # Features
-- Text editor (!!)
-- list more
-# Todo
-- Allow the text editor to buffer text and only send it through when necessary
-# Feature Explanations
-## General
-The terminal UI was implemented using the  library.
-## Text Editor
-It was implemented using a gap buffer. 
-- The buffer and cursor position on the screen are tracked independently due to the difference in dimensions (2D cursor position vs 1D position in array)
-- Movement up and down will calculate where to move based off previous/next/following line start and/or end positions, it will maintain the column position when moving between rows and do the entire movement in one ```copy()``` to try and speed things up a little.
-- The cursor position is tracked by checking the lengths of the lines and will only allow movement within or at the end of text
-- The screen will redraw when the text has updated which will also recalculate the line lengths
-- It can open text files directly in the case of wanting to load an SQL script to run
+- Works with Sqlite and can be expanded to others through the use of an interface
+- Custom terminal UI components such as:
+  - Text Editor
+  - Lists
+  - Tree Lists
+  - Tables
+  - Forms
+  - Textbox
+  - Radio Selectors
+  - Buttons
+  - Status Bar
+- Gap buffer implementation for the text editor
+- Saving and loading connections to and from a config file
+  - Will save any connections saved within the program to the config dir based on your OS from the ```os.UserConfigDir``` function, keep this in mind if running the program in case you don't want it saved locally
+- Displays Tables and their columns, data from queries, results from updates/inserts and indexes and their attributes
+# Showcase
+![Insert](https://github.com/user-attachments/assets/ee144dfc-6480-470a-9250-cc4cf81bc6a0)
+![Index](https://github.com/user-attachments/assets/ce5cd01c-d7fd-41f9-8192-00ae4821ebd7)
+![CreateTableAndOpenList](https://github.com/user-attachments/assets/90e9bbe6-1e9a-4810-970f-3fb65449e43f)
+![CreateMultipleTables](https://github.com/user-attachments/assets/6b3620e5-5ce4-4d44-8cb1-60eddf840cca)
+![CreateAndConnect](https://github.com/user-attachments/assets/91157e39-7005-428e-8585-bf48d213d902)
